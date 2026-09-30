@@ -145,7 +145,14 @@ public enum PairRepair {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let stamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
-        let url = dir.appendingPathComponent("pair-repair-\(stamp).json")
+        // Second-resolution stamps collide when two applies run in the same second,
+        // which would silently overwrite the earlier audit log.
+        var url = dir.appendingPathComponent("pair-repair-\(stamp).json")
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = dir.appendingPathComponent("pair-repair-\(stamp)-\(n).json")
+            n += 1
+        }
         let payload: [String: Any] = [
             "performed_at": stamp,
             "renamed_count": renames.count,

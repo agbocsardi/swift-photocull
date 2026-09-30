@@ -3,6 +3,7 @@ import PhotoCullCore
 
 func suitePairRepair() throws {
     let tmp = try makeTempDir("repair")
+    let logDir = try makeTempDir("repairlog")
     let inbox = tmp.appendingPathComponent("inbox")
     let archive = tmp.appendingPathComponent("archive")
     let fm = FileManager.default
@@ -44,7 +45,7 @@ func suitePairRepair() throws {
     check(!plan.applied, "plan is not marked applied")
 
     // ---- apply -------------------------------------------------------------
-    let applied = try PairRepair.apply(cfg: cfg)
+    let applied = try PairRepair.apply(cfg: cfg, logDirectory: logDir)
     checkEqual(applied.renamed, 2, "apply renamed both candidates")
     check(applied.applied, "result marked applied")
     check(fm.fileExists(atPath: d1.appendingPathComponent("DSCF0677.RAF").path),
@@ -65,18 +66,17 @@ func suitePairRepair() throws {
     checkEqual(pairs.first { $0.stem == "DSCF0678" }?.hasRAW, true, "undamaged pair still intact")
 
     // ---- idempotent --------------------------------------------------------
-    let again = try PairRepair.apply(cfg: cfg)
+    let again = try PairRepair.apply(cfg: cfg, logDirectory: logDir)
     checkEqual(again.renamed, 0, "second run is a no-op")
 
     // ---- audit log ---------------------------------------------------------
-    let logDir = try makeTempDir("repairlog")
     let d3 = inbox.appendingPathComponent("2026-01-01")
     try fm.createDirectory(at: d3, withIntermediateDirectories: true)
     try touch(d3.appendingPathComponent("AAA1.JPG"), bytes: 10)
     try touch(d3.appendingPathComponent("AAA1_2.RAF"), bytes: 20)
     _ = try PairRepair.apply(cfg: cfg, includeArchive: false, logDirectory: logDir)
     let logs = (try? fm.contentsOfDirectory(atPath: logDir.path)) ?? []
-    checkEqual(logs.count, 1, "apply wrote exactly one audit log")
+    checkEqual(logs.count, 2, "each apply wrote an audit log")
     if let log = logs.first,
        let data = try? Data(contentsOf: logDir.appendingPathComponent(log)),
        let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
