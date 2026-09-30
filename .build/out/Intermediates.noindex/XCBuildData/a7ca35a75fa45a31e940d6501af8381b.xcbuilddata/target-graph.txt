@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'PhotoCullTests-product' in project 'PhotoCull'
+➜ Explicit dependency on target 'PhotoCullCore' in project 'PhotoCull'
+Target 'PhotoCullCore' in project 'PhotoCull' (no dependencies)

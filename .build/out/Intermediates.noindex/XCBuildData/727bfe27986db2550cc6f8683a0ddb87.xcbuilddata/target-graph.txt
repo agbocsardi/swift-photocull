@@ -1,0 +1,13 @@
+Target dependency graph (5 targets)
+Target 'AllExcludingTests' in project 'Aggregate'
+➜ Explicit dependency on target 'PhotoCull-product' in project 'PhotoCull'
+➜ Explicit dependency on target 'PhotoCullCore-product' in project 'PhotoCull'
+➜ Explicit dependency on target 'PhotoCullTests-product' in project 'PhotoCull'
+➜ Explicit dependency on target 'PhotoCullCore' in project 'PhotoCull'
+Target 'PhotoCullTests-product' in project 'PhotoCull'
+➜ Explicit dependency on target 'PhotoCullCore' in project 'PhotoCull'
+Target 'PhotoCullCore-product' in project 'PhotoCull'
+➜ Explicit dependency on target 'PhotoCullCore' in project 'PhotoCull'
+Target 'PhotoCull-product' in project 'PhotoCull'
+➜ Explicit dependency on target 'PhotoCullCore' in project 'PhotoCull'
+Target 'PhotoCullCore' in project 'PhotoCull' (no dependencies)

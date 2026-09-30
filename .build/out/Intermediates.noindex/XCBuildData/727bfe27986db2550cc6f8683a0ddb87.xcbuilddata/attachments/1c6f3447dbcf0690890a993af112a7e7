@@ -1,0 +1,89 @@
+{
+  "" : {
+    "diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/PhotoCullCore-primary.dia",
+    "emit-module-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/PhotoCullCore-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/PhotoCullCore-primary-emit-module.dia",
+    "pch" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/PhotoCullCore-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/PhotoCullCore-primary.swiftdeps"
+  },
+  "/Users/agbocsardi/Documents/1-projects/swift-photocull/Sources/PhotoCullCore/Config.swift" : {
+    "const-values" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Config.swiftconstvalues",
+    "dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Config.d",
+    "diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Config.dia",
+    "index-unit-output-path" : "/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Config.o",
+    "llvm-bc" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Config.bc",
+    "object" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Config.o",
+    "swift-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Config.swiftdeps",
+    "swiftmodule" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Config~partial.swiftmodule"
+  },
+  "/Users/agbocsardi/Documents/1-projects/swift-photocull/Sources/PhotoCullCore/Exif.swift" : {
+    "const-values" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Exif.swiftconstvalues",
+    "dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Exif.d",
+    "diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Exif.dia",
+    "index-unit-output-path" : "/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Exif.o",
+    "llvm-bc" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Exif.bc",
+    "object" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Exif.o",
+    "swift-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Exif.swiftdeps",
+    "swiftmodule" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Exif~partial.swiftmodule"
+  },
+  "/Users/agbocsardi/Documents/1-projects/swift-photocull/Sources/PhotoCullCore/FilePair.swift" : {
+    "const-values" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/FilePair.swiftconstvalues",
+    "dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/FilePair.d",
+    "diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/FilePair.dia",
+    "index-unit-output-path" : "/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/FilePair.o",
+    "llvm-bc" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/FilePair.bc",
+    "object" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/FilePair.o",
+    "swift-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/FilePair.swiftdeps",
+    "swiftmodule" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/FilePair~partial.swiftmodule"
+  },
+  "/Users/agbocsardi/Documents/1-projects/swift-photocull/Sources/PhotoCullCore/Finalize.swift" : {
+    "const-values" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Finalize.swiftconstvalues",
+    "dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Finalize.d",
+    "diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Finalize.dia",
+    "index-unit-output-path" : "/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Finalize.o",
+    "llvm-bc" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Finalize.bc",
+    "object" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Finalize.o",
+    "swift-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Finalize.swiftdeps",
+    "swiftmodule" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Finalize~partial.swiftmodule"
+  },
+  "/Users/agbocsardi/Documents/1-projects/swift-photocull/Sources/PhotoCullCore/ImagePipeline.swift" : {
+    "const-values" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/ImagePipeline.swiftconstvalues",
+    "dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/ImagePipeline.d",
+    "diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/ImagePipeline.dia",
+    "index-unit-output-path" : "/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/ImagePipeline.o",
+    "llvm-bc" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/ImagePipeline.bc",
+    "object" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/ImagePipeline.o",
+    "swift-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/ImagePipeline.swiftdeps",
+    "swiftmodule" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/ImagePipeline~partial.swiftmodule"
+  },
+  "/Users/agbocsardi/Documents/1-projects/swift-photocull/Sources/PhotoCullCore/Ingest.swift" : {
+    "const-values" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Ingest.swiftconstvalues",
+    "dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Ingest.d",
+    "diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Ingest.dia",
+    "index-unit-output-path" : "/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Ingest.o",
+    "llvm-bc" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Ingest.bc",
+    "object" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Ingest.o",
+    "swift-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Ingest.swiftdeps",
+    "swiftmodule" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Ingest~partial.swiftmodule"
+  },
+  "/Users/agbocsardi/Documents/1-projects/swift-photocull/Sources/PhotoCullCore/Library.swift" : {
+    "const-values" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Library.swiftconstvalues",
+    "dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Library.d",
+    "diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Library.dia",
+    "index-unit-output-path" : "/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Library.o",
+    "llvm-bc" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Library.bc",
+    "object" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Library.o",
+    "swift-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Library.swiftdeps",
+    "swiftmodule" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Library~partial.swiftmodule"
+  },
+  "/Users/agbocsardi/Documents/1-projects/swift-photocull/Sources/PhotoCullCore/Session.swift" : {
+    "const-values" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Session.swiftconstvalues",
+    "dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Session.d",
+    "diagnostics" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Session.dia",
+    "index-unit-output-path" : "/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Session.o",
+    "llvm-bc" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Session.bc",
+    "object" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Session.o",
+    "swift-dependencies" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Session.swiftdeps",
+    "swiftmodule" : "/Users/agbocsardi/Documents/1-projects/swift-photocull/.build/out/Intermediates.noindex/PhotoCull.build/Debug/PhotoCullCore-t.build/Objects-normal/arm64/Session~partial.swiftmodule"
+  }
+}
