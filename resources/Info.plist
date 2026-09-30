@@ -6,6 +6,7 @@
     <key>CFBundleExecutable</key><string>PhotoCull</string>
     <key>CFBundleIdentifier</key><string>local.photocull.swift</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleIconFile</key><string>PhotoCull</string>
     <key>CFBundleName</key><string>PhotoCull</string>
     <key>CFBundleDisplayName</key><string>PhotoCull</string>
     <key>CFBundlePackageType</key><string>APPL</string>

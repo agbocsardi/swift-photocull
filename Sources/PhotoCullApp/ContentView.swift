@@ -93,7 +93,7 @@ struct ContentView: View {
             } label: {
                 Label("Ingest", systemImage: "square.and.arrow.down")
             }
-            .help("Ingest photos from an SD card (⌘I)")
+            .help("Ingest photos from an SD card (⌘⇧I)")
 
             Button {
                 app.beginGlobalFinalize()
@@ -151,13 +151,13 @@ struct StatusBar: View {
                 ProgressView().controlSize(.mini).scaleEffect(0.55)
             }
             Text(app.cfg.paths.inbox.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                .font(Typo.monoSmall)
-                .foregroundStyle(Palette.quaternary)
+                .font(Typo.mono)
+                .foregroundStyle(Palette.tertiary)
                 .lineLimit(1)
                 .truncationMode(.head)
         }
-        .padding(.horizontal, 12)
-        .frame(height: 26)
+        .padding(.horizontal, Metric.paneInset)
+        .frame(height: Metric.statusHeight)
         .background(Surface.chrome)
     }
 }
@@ -178,14 +178,14 @@ struct ToastView: View {
                     .font(Typo.callout)
                     .foregroundStyle(Palette.label)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.horizontal, Metric.paneInset)
+            .padding(.vertical, 6)
             .background(
                 Capsule(style: .continuous).fill(Surface.floating)
             )
             .overlay(Capsule(style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
             .shadowMedium()
-            .padding(.bottom, 38)
+            .padding(.bottom, Metric.floatingBottom)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .allowsHitTesting(false)
             .animation(Motion.normal, value: toast)
@@ -215,7 +215,7 @@ struct CommandBar: View {
                     .foregroundStyle(Palette.tertiary)
             }
             .font(Typo.body)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, Metric.paneInset)
             .frame(height: 32)
             .frame(maxWidth: 460)
             .background(RoundedRectangle(cornerRadius: Metric.radiusCard, style: .continuous)
@@ -223,7 +223,7 @@ struct CommandBar: View {
             .overlay(RoundedRectangle(cornerRadius: Metric.radiusCard, style: .continuous)
                 .strokeBorder(Palette.separator, lineWidth: 0.5))
             .shadowMedium()
-            .padding(.bottom, 48)
+            .padding(.bottom, Metric.floatingBottom)
         }
         .allowsHitTesting(false)
         .transition(.opacity)

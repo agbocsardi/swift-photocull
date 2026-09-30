@@ -18,11 +18,10 @@ struct FilmstripPane: View {
                 EmptyState(icon: "film",
                            title: "No photos",
                            message: "This session has no JPG files.")
-                    .frame(height: 62)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 6) {
+                        LazyHStack(spacing: Metric.elementGap) {
                             ForEach(Array(app.pairs.enumerated()), id: \.element.stem) { i, pair in
                                 ThumbCell(pair: pair, index: i,
                                           decision: app.decision(for: pair.stem),
@@ -32,8 +31,8 @@ struct FilmstripPane: View {
                                     .id(i)
                             }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 8)
+                        .padding(.horizontal, Metric.paneInset)
+                        .padding(.bottom, Metric.elementGap)
                     }
                     .onChange(of: app.index) { _, new in
                         withAnimation(Motion.fast) { proxy.scrollTo(new, anchor: .center) }
@@ -75,20 +74,20 @@ private struct ThumbCell: View {
                     ProgressView().controlSize(.mini).scaleEffect(0.5)
                 }
             }
-            .frame(width: 78, height: 58)
+            .frame(width: Metric.thumbWidth, height: Metric.thumbHeight)
             .overlay(alignment: .topTrailing) {
                 if decision != .undecided {
                     Image(systemName: decision == .keep ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(decision.color)
-                        .background(Circle().fill(.white).padding(1.5))
+                        .background(Circle().fill(.white).padding(2))
                         .padding(3)
                 }
             }
             .overlay(alignment: .bottomLeading) {
                 if isCropped {
                     Image(systemName: "crop")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(Typo.iconTiny.weight(.bold))
                         .foregroundStyle(Palette.crop)
                         .padding(2)
                         .background(Circle().fill(.black.opacity(0.35)))
@@ -98,9 +97,9 @@ private struct ThumbCell: View {
             .overlay(alignment: .bottomTrailing) {
                 if pair.hasRAW {
                     Text(pair.rawExt ?? "R")
-                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .foregroundStyle(Palette.raw)
-                        .padding(.horizontal, 2.5).padding(.vertical, 1)
+                        .padding(.horizontal, 3).padding(.vertical, 1)
                         .background(Capsule().fill(.black.opacity(0.35)))
                         .padding(3)
                 }

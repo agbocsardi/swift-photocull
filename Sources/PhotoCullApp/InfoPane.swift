@@ -46,28 +46,17 @@ struct InfoPane: View {
                         }
 
                         group("Cull") {
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text("Decision")
-                                    .font(Typo.caption)
-                                    .foregroundStyle(Palette.tertiary)
-                                    .frame(width: 62, alignment: .leading)
+                            InspectorRow(label: "Decision", value: nil) {
                                 DecisionBadge(text: app.currentDecision.label,
                                               color: app.currentDecision.color,
                                               filled: app.currentDecision != .undecided)
-                                Spacer(minLength: 0)
                             }
-                            .padding(.vertical, 2)
 
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text("Crop")
-                                    .font(Typo.caption)
-                                    .foregroundStyle(Palette.tertiary)
-                                    .frame(width: 62, alignment: .leading)
+                            InspectorRow(label: "Crop", value: nil) {
                                 if let crop = app.currentCrop, !crop.isFullFrame {
                                     Text(String(format: "%.0f%% × %.0f%%", crop.w * 100, crop.h * 100))
                                         .font(Typo.callout)
                                         .foregroundStyle(Palette.crop)
-                                    Spacer(minLength: 0)
                                     Button("Clear") { app.clearCrop() }
                                         .buttonStyle(.plain)
                                         .font(Typo.caption)
@@ -76,10 +65,8 @@ struct InfoPane: View {
                                     Text("Full frame")
                                         .font(Typo.callout)
                                         .foregroundStyle(Palette.quaternary)
-                                    Spacer(minLength: 0)
                                 }
                             }
-                            .padding(.vertical, 2)
 
                             InspectorRow(label: "Position",
                                          value: app.pairs.isEmpty ? nil : "\(app.index + 1) of \(app.pairs.count)",
@@ -89,7 +76,7 @@ struct InfoPane: View {
                         group("Location") {
                             Text(app.currentPair?.jpg.path
                                     .replacingOccurrences(of: NSHomeDirectory(), with: "~") ?? "")
-                                .font(Typo.monoSmall)
+                                .font(Typo.mono)
                                 .foregroundStyle(Palette.tertiary)
                                 .textSelection(.enabled)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -110,7 +97,7 @@ struct InfoPane: View {
         VStack(alignment: .leading, spacing: 0) {
             content()
         }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 8)
+        .padding(.horizontal, Metric.paneInset)
+        .padding(.bottom, Metric.elementGap)
     }
 }

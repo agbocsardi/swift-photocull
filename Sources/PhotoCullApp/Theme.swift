@@ -7,9 +7,12 @@ import PhotoCullCore
 // Follows Apple's HIG via the macos-design-skill references:
 //  - semantic, appearance-aware colors (no hard-coded dark palette, no forced scheme)
 //  - SF Pro for UI, SF Mono only for technical values
-//  - materials/vibrancy for sidebar, toolbar and floating chrome
+//  - materials/vibrancy for sidebar, toolbar, filmstrip and floating chrome
 //  - layered shadows (the `0 0 0 0.5px` edge definition is the signature macOS look)
-//  - 8pt spacing grid, native corner radii and control heights
+//  - an 8pt spacing grid, native control heights and corner radii
+//
+// Rule: panes must not carry raw numbers. Every inset, size and font comes from
+// Metric / Typo / Palette so the four panes stay consistent.
 
 // MARK: - Color
 
@@ -18,8 +21,8 @@ import PhotoCullCore
 enum Palette {
     static let window        = Color(nsColor: .windowBackgroundColor)
     static let content       = Color(nsColor: .controlBackgroundColor)
-    static let elevated      = Color(nsColor: .controlBackgroundColor)
-    static let sidebarRow    = Color(nsColor: .quaternaryLabelColor)
+    /// One step above `content` — used for raised surfaces.
+    static let elevated      = Color(nsColor: .textBackgroundColor)
 
     static let label         = Color(nsColor: .labelColor)
     static let secondary     = Color(nsColor: .secondaryLabelColor)
@@ -45,6 +48,7 @@ enum Palette {
 
 /// Apple's type scale. macOS apps use smaller type than the web: 13pt body.
 /// Only technical values (file names, numbers, keycaps) use the monospaced face.
+/// Nothing in the app may render below 9pt.
 enum Typo {
     static let largeTitle = Font.system(size: 26, weight: .bold)
     static let title1     = Font.system(size: 22, weight: .regular)
@@ -60,39 +64,56 @@ enum Typo {
     static let number     = Font.system(size: 11, weight: .medium).monospacedDigit()
     static let numberBold = Font.system(size: 13, weight: .semibold).monospacedDigit()
 
-    /// Filenames and keycaps only.
+    /// Filenames, paths and keycaps only.
     static let mono       = Font.system(size: 11, weight: .regular, design: .monospaced)
-    static let monoSmall  = Font.system(size: 10, weight: .regular, design: .monospaced)
+
+    /// Small-caps pane and group headers. Pair with `.tracking(0.4)`.
+    static let sectionHeader = Font.system(size: 10, weight: .semibold)
+
+    // SF Symbol sizes.
+    static let iconLarge  = Font.system(size: 30, weight: .light)
+    static let iconMedium = Font.system(size: 14, weight: .regular)
+    static let iconSmall  = Font.system(size: 12, weight: .regular)
+    static let iconTiny   = Font.system(size: 9,  weight: .medium)
 }
 
 // MARK: - Metrics
 
 enum Metric {
-    static let windowPadding: CGFloat = 16
-    static let sectionGap: CGFloat    = 24
-    static let cardGap: CGFloat       = 12
-    static let elementGap: CGFloat     = 8
-    static let dividerMargin: CGFloat  = 8
+    /// The single inset used by every pane header, row and strip. Keeping one
+    /// value is what makes the four panes line up. 16pt matches the content
+    /// inset native sidebars and inspectors use; 12pt measured too tight
+    /// against the window edge for a filled badge.
+    static let paneInset: CGFloat = 16
 
-    static let toolbarHeight: CGFloat  = 52
-    static let sidebarRow: CGFloat     = 34
-    static let listRow: CGFloat        = 40
-    static let controlHeight: CGFloat  = 28
-    static let filmstripHeight: CGFloat = 104
+    static let sectionGap: CGFloat     = 24
+    static let elementGap: CGFloat     = 8
+
+    static let controlHeight: CGFloat   = 28
+    static let statusHeight: CGFloat    = 26
+    static let sidebarRow: CGFloat      = 34
+    static let filmstripHeight: CGFloat = 128
     static let inspectorWidth: CGFloat  = 260
     static let sidebarMin: CGFloat      = 200
     static let sidebarIdeal: CGFloat    = 232
 
-    static let radiusWindow: CGFloat  = 10
-    static let radiusPanel: CGFloat   = 12
-    static let radiusCard: CGFloat    = 8
-    static let radiusButton: CGFloat  = 6
-    static let radiusInput: CGFloat   = 6
-    static let radiusBadge: CGFloat   = 4
-    static let radiusThumb: CGFloat   = 6
+    static let thumbWidth: CGFloat  = 80
+    static let thumbHeight: CGFloat = 56
 
-    /// Space reserved for the traffic lights when the title bar is hidden.
-    static let trafficLightInset: CGFloat = 78
+    static let inspectorLabelWidth: CGFloat = 64
+
+    static let radiusCard: CGFloat   = 8
+    static let radiusButton: CGFloat = 6
+    static let radiusBadge: CGFloat  = 4
+    static let radiusThumb: CGFloat  = 6
+
+    /// Padding between the photo and the edges of the canvas.
+    static let canvasPad: CGFloat = 24
+    /// Distance from the window bottom for floating chrome (toast, command bar).
+    static let floatingBottom: CGFloat = 40
+
+    static let sheetPadding: CGFloat      = 20
+    static let sheetGroupPadding: CGFloat = 14
 }
 
 // MARK: - Motion
@@ -106,7 +127,7 @@ enum Motion {
 // MARK: - Layered shadows
 
 extension View {
-    /// Cards and buttons. The 0.5px ring is what gives macOS edges their definition.
+    /// Cards and buttons.
     func shadowSubtle() -> some View {
         shadow(color: .black.opacity(0.16), radius: 1, x: 0, y: 1)
     }
@@ -134,11 +155,10 @@ extension View {
 // MARK: - Materials
 
 enum Surface {
-    /// Sidebar, toolbar, filmstrip — anything that should let the desktop through.
+    /// Sidebar, toolbar, filmstrip, status bar — anything that lets the desktop through.
     static let chrome: Material = .bar
     static let panel: Material  = .regularMaterial
     static let floating: Material = .thickMaterial
-    static let overlay: Material = .ultraThickMaterial
 }
 
 // MARK: - Model presentation
@@ -184,8 +204,8 @@ struct DecisionBadge: View {
         Text(text)
             .font(compact ? Typo.mini : Typo.caption.weight(.semibold))
             .foregroundStyle(filled ? Color.white : color)
-            .padding(.horizontal, compact ? 4 : 6)
-            .padding(.vertical, compact ? 1 : 2)
+            .padding(.horizontal, compact ? 5 : 6)
+            .padding(.vertical, compact ? 2 : 2)
             .background(
                 RoundedRectangle(cornerRadius: Metric.radiusBadge, style: .continuous)
                     .fill(filled ? color : color.opacity(0.15))
@@ -200,8 +220,8 @@ struct Keycap: View {
         Text(key)
             .font(.system(size: 10, weight: .medium, design: .monospaced))
             .foregroundStyle(Palette.secondary)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1.5)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(Palette.quaternary.opacity(0.5))
@@ -210,6 +230,27 @@ struct Keycap: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .strokeBorder(Palette.separator, lineWidth: 0.5)
             )
+    }
+}
+
+/// The numeral that identifies a pane. Panes are addressable with the 1-4 keys,
+/// so each one is labelled and lights up while it has keyboard focus.
+struct PaneBadge: View {
+    let number: Int
+    var focused: Bool = false
+
+    var body: some View {
+        Text("\(number)")
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .foregroundStyle(focused ? Color.white : Palette.secondary)
+            .frame(width: 16, height: 16)
+            .background(
+                Circle().fill(focused ? Palette.accent : Palette.quaternary.opacity(0.5))
+            )
+            .overlay(
+                Circle().strokeBorder(Palette.separator, lineWidth: focused ? 0 : 0.5)
+            )
+            .animation(Motion.fast, value: focused)
     }
 }
 
@@ -231,7 +272,7 @@ private struct ToolbarButtonBody: View {
         configuration.label
             .font(Typo.body)
             .foregroundStyle(prominent ? Color.white : Palette.label)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, Metric.elementGap)
             .frame(height: Metric.controlHeight)
             .background(
                 RoundedRectangle(cornerRadius: Metric.radiusButton, style: .continuous)
@@ -260,9 +301,9 @@ struct EmptyState: View {
     var action: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Metric.elementGap + 2) {
             Image(systemName: icon)
-                .font(.system(size: 30, weight: .light))
+                .font(Typo.iconLarge)
                 .foregroundStyle(Palette.quaternary)
             Text(title)
                 .font(Typo.title3)
@@ -285,51 +326,41 @@ struct EmptyState: View {
     }
 }
 
-/// Two-column inspector row (label left, value right) in the macOS inspector idiom.
-struct InspectorRow: View {
+/// Two-column inspector row: label left, value right. One padding value, one
+/// label width, shared by every inspector row in the app.
+struct InspectorRow<Content: View>: View {
     let label: String
-    let value: String?
+    var value: String?
     var mono: Bool = false
     var tint: Color?
+    @ViewBuilder var content: () -> Content
+
+    init(label: String, value: String?, mono: Bool = false, tint: Color? = nil,
+         @ViewBuilder content: @escaping () -> Content = { EmptyView() }) {
+        self.label = label
+        self.value = value
+        self.mono = mono
+        self.tint = tint
+        self.content = content
+    }
 
     var body: some View {
-        if let value, !value.isEmpty {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(label)
-                    .font(Typo.caption)
-                    .foregroundStyle(Palette.tertiary)
-                    .frame(width: 62, alignment: .leading)
+        HStack(alignment: .firstTextBaseline, spacing: Metric.elementGap) {
+            Text(label)
+                .font(Typo.caption)
+                .foregroundStyle(Palette.tertiary)
+                .frame(width: Metric.inspectorLabelWidth, alignment: .leading)
+            if let value, !value.isEmpty {
                 Text(value)
                     .font(mono ? Typo.mono : Typo.callout)
                     .foregroundStyle(tint ?? Palette.label)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
             }
-            .padding(.vertical, 1.5)
+            content()
+            Spacer(minLength: 0)
         }
-    }
-}
-
-/// The numeral that identifies a pane. Panes are addressable with the 1-4 keys,
-/// so each one is labelled and lights up while it has keyboard focus.
-struct PaneBadge: View {
-    let number: Int
-    var focused: Bool = false
-    var large: Bool = false
-
-    var body: some View {
-        Text("\(number)")
-            .font(.system(size: large ? 11 : 9, weight: .bold, design: .rounded))
-            .foregroundStyle(focused ? Color.white : Palette.secondary)
-            .frame(width: large ? 18 : 14, height: large ? 18 : 14)
-            .background(
-                Circle().fill(focused ? Palette.accent : Palette.quaternary.opacity(0.5))
-            )
-            .overlay(
-                Circle().strokeBorder(Palette.separator, lineWidth: focused ? 0 : 0.5)
-            )
-            .animation(Motion.fast, value: focused)
+        .padding(.vertical, 2)
     }
 }
 
@@ -341,18 +372,18 @@ struct SectionHeader: View {
     var trailing: AnyView?
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Metric.elementGap - 2) {
             if let number { PaneBadge(number: number, focused: focused) }
             Text(text.uppercased())
-                .font(.system(size: 10, weight: .semibold))
+                .font(Typo.sectionHeader)
                 .tracking(0.4)
                 .foregroundStyle(focused ? Palette.label : Palette.tertiary)
             Spacer(minLength: 0)
             if let trailing { trailing }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 10)
-        .padding(.bottom, 3)
+        .padding(.horizontal, Metric.paneInset)
+        .padding(.top, Metric.paneInset)
+        .padding(.bottom, 6)
     }
 }
 
@@ -368,7 +399,7 @@ struct ProgressLine: View {
                     .frame(width: max(0, min(1, value)) * geo.size.width)
             }
         }
-        .frame(height: 2.5)
+        .frame(height: 2)
         .animation(Motion.fast, value: value)
     }
 }

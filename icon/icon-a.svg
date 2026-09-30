@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B322E"/>
+      <stop offset="1" stop-color="#191F1C"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="0.30" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="iris" gradientUnits="userSpaceOnUse" x1="300" y1="240" x2="740" y2="810">
+      <stop offset="0" stop-color="#7FBBB3"/>
+      <stop offset="1" stop-color="#A7C080"/>
+    </linearGradient>
+    <linearGradient id="amb" gradientUnits="userSpaceOnUse" x1="600" y1="200" x2="900" y2="430">
+      <stop offset="0" stop-color="#E6CF98"/>
+      <stop offset="1" stop-color="#D2AB5F"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#sheen)"/>
+  <g transform="translate(-20,8)">
+    <path fill="url(#iris)" d="M 634.39 561.45 L 668.29 802.65 A 330 330 0 0 1 338.44 792.67 L 530.37 642.72 Q 575.34 593.07 634.39 561.45 Z"/>
+    <path fill="url(#iris)" d="M 530.37 642.72 L 338.44 792.67 A 330 330 0 0 1 182.15 502.03 L 407.98 593.27 Q 473.46 607.39 530.37 642.72 Z"/>
+    <path fill="url(#iris)" d="M 407.98 593.27 L 182.15 502.03 A 330 330 0 0 1 355.71 221.35 L 389.61 462.55 Q 410.12 526.32 407.98 593.27 Z"/>
+    <path fill="url(#iris)" d="M 389.61 462.55 L 355.71 221.35 A 330 330 0 0 1 685.56 231.33 L 493.63 381.28 Q 448.66 430.93 389.61 462.55 Z"/>
+    <path fill="url(#iris)" d="M 616.02 430.73 L 841.85 521.97 A 330 330 0 0 1 668.29 802.65 L 634.39 561.45 Q 613.88 497.68 616.02 430.73 Z"/>
+    <path fill="url(#amb)" d="M 493.63 381.28 L 685.56 231.33 A 330 330 0 0 1 760.04 294.34 C 852.05 329.15 930.88 436.12 939.04 562.41 C 807.29 552.09 698.00 511.13 616.02 430.73 Q 550.54 416.61 493.63 381.28 Z"/>
+  </g>
+</svg>

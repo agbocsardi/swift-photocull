@@ -76,7 +76,7 @@ struct ImagePane: View {
                 VStack {
                     Spacer()
                     FloatingActionBar()
-                        .padding(.bottom, 14)
+                        .padding(.bottom, Metric.elementGap * 2)
                 }
             }
 
@@ -86,22 +86,22 @@ struct ImagePane: View {
         }
         // Pane 2 marker, so the numbered keyboard map stays discoverable.
         .overlay(alignment: .topLeading) {
-            HStack(spacing: 7) {
-                PaneBadge(number: 2, focused: app.focusedPane == .image, large: true)
+            HStack(spacing: Metric.elementGap - 2) {
+                PaneBadge(number: 2, focused: app.focusedPane == .image)
                 if app.cropMode {
                     Text("CROP MODE")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(Typo.sectionHeader)
                         .tracking(0.4)
                         .foregroundStyle(Palette.crop)
                 }
             }
-            .padding(.horizontal, app.cropMode ? 8 : 0)
+            .padding(.horizontal, app.cropMode ? Metric.elementGap : 0)
             .padding(.vertical, app.cropMode ? 5 : 0)
             .background(
                 Capsule(style: .continuous)
                     .fill(app.cropMode ? AnyShapeStyle(Surface.floating) : AnyShapeStyle(Color.clear))
             )
-            .padding(10)
+            .padding(Metric.paneInset)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(Motion.normal, value: app.cropMode)
@@ -111,7 +111,7 @@ struct ImagePane: View {
         guard size.width > 0, size.height > 0, container.width > 0, container.height > 0 else {
             return CGSize(width: 1, height: 1)
         }
-        let pad: CGFloat = 24
+        let pad: CGFloat = Metric.canvasPad
         let avail = CGSize(width: max(1, container.width - pad), height: max(1, container.height - pad))
         let scale = min(avail.width / size.width, avail.height / size.height)
         return CGSize(width: size.width * scale, height: size.height * scale)
@@ -154,7 +154,7 @@ struct FloatingActionBar: View {
             Text(String(format: "%.0f%%", app.zoom * 100))
                 .font(Typo.number)
                 .foregroundStyle(Palette.secondary)
-                .frame(width: 38)
+                .frame(width: 40)
             action("plus.magnifyingglass", tint: Palette.secondary, tip: "Zoom in (+)", filled: false) {
                 app.zoomIn()
             }
@@ -168,7 +168,7 @@ struct FloatingActionBar: View {
             action("folder", tint: Palette.secondary,
                    tip: "Reveal in Finder (f)", filled: false) { app.revealInFinder() }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Metric.elementGap)
         .padding(.vertical, 6)
         .background(Capsule(style: .continuous).fill(Surface.floating))
         .overlay(Capsule(style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
@@ -196,7 +196,7 @@ private struct FloatingButton: View {
             Image(systemName: symbol)
                 .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(filled ? Color.white : tint)
-                .frame(width: 28, height: 26)
+                .frame(width: Metric.controlHeight, height: Metric.controlHeight)
                 .background(
                     RoundedRectangle(cornerRadius: Metric.radiusButton, style: .continuous)
                         .fill(filled ? tint : (hover.value ? Palette.hover : Color.clear))

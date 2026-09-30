@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B322E"/>
+      <stop offset="1" stop-color="#191F1C"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="0.30" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="disc" gradientUnits="userSpaceOnUse" x1="512" y1="205" x2="512" y2="820">
+      <stop offset="0" stop-color="#7FBBB3"/>
+      <stop offset="1" stop-color="#A7C080"/>
+    </linearGradient>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B322E"/>
+      <stop offset="1" stop-color="#191F1C"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#sheen)"/>
+  <g transform="translate(-14,6)">
+    <circle cx="512" cy="512" r="308" fill="url(#disc)"/>
+    <path fill="url(#bg2)" d="M 507.99 557.82 C 443.91 689.38 343.71 680.29 292.81 623.68 C 387.88 592.61 456.63 585.47 507.99 557.82 Z"/>
+    <path fill="url(#bg2)" d="M 474.32 485.62 C 392.43 364.34 450.40 282.11 524.87 266.34 C 504.25 364.20 476.05 427.31 474.32 485.62 Z"/>
+    <path fill="url(#bg2)" d="M 553.69 492.56 C 699.66 482.28 741.89 573.60 718.31 645.98 C 643.87 579.19 603.31 523.21 553.69 492.56 Z"/>
+    <path fill="#DBBC7F" d="M 738.00 120.56 C 650.29 201.39 718.67 452.74 624.22 475.54 C 712.27 431.08 533.90 198.76 738.00 120.56 Z"/>
+    <path fill="url(#bg2)" d="M 738.00 120.56 C 650.29 201.39 718.67 452.74 624.22 475.54 C 727.11 425.09 535.02 182.80 738.00 120.56 Z"/>
+  </g>
+</svg>

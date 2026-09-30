@@ -29,8 +29,8 @@ struct SessionsPane: View {
                                     .id(row.date)
                             }
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.bottom, 8)
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, Metric.elementGap)
                     }
                     .onChange(of: app.cursorDate) { _, new in
                         guard let new else { return }
@@ -123,8 +123,9 @@ private struct SessionRowView: View {
                     .opacity(row.status == .unstarted ? 0.4 : 1)
             }
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 5)
+        .padding(.horizontal, Metric.paneInset - 4)
+        .padding(.vertical, 4)
+        .frame(minHeight: Metric.sidebarRow)
         .background(
             RoundedRectangle(cornerRadius: Metric.radiusButton, style: .continuous)
                 .fill(fill)

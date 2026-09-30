@@ -32,7 +32,7 @@ struct SheetShell<Content: View, Buttons: View>: View {
 
             ScrollView {
                 content()
-                    .padding(20)
+                    .padding(Metric.sheetPadding)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxHeight: 460)
@@ -59,12 +59,12 @@ struct SheetGroup<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
+                .font(Typo.sectionHeader)
                 .tracking(0.4)
                 .foregroundStyle(Palette.tertiary)
             content()
         }
-        .padding(14)
+        .padding(Metric.sheetGroupPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Metric.radiusCard, style: .continuous)
@@ -289,7 +289,7 @@ struct IngestSheet: View {
                                     .foregroundStyle(Palette.secondary)
                                 Spacer(minLength: 8)
                                 Text(app.ingestProgress.current)
-                                    .font(Typo.monoSmall)
+                                    .font(Typo.mono)
                                     .foregroundStyle(Palette.tertiary)
                                     .lineLimit(1)
                                     .truncationMode(.middle)

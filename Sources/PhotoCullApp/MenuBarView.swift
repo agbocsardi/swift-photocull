@@ -20,7 +20,7 @@ struct MenuBarView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("INBOX")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(Typo.sectionHeader)
                     .tracking(0.4)
                     .foregroundStyle(Palette.tertiary)
 
@@ -50,7 +50,7 @@ struct MenuBarView: View {
                     }
                 }
             }
-            .padding(10)
+            .padding(Metric.paneInset)
 
             Divider().overlay(Palette.separator)
 
@@ -99,12 +99,12 @@ struct MenuBarView: View {
                          total: Double(max(1, app.ingestProgress.total)))
                 .tint(Palette.keep)
             Text("\(app.ingestProgress.copied) of \(app.ingestProgress.total) · \(app.ingestProgress.current)")
-                .font(Typo.monoSmall)
+                .font(Typo.mono)
                 .foregroundStyle(Palette.tertiary)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
-        .padding(10)
+        .padding(Metric.paneInset)
     }
 
     private func activate() {

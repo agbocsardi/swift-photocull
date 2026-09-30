@@ -19,6 +19,13 @@ cp "$BIN/PhotoCull" "$APP/Contents/MacOS/PhotoCull"
 cp "$ROOT/resources/Info.plist" "$APP/Contents/Info.plist"
 chmod +x "$APP/Contents/MacOS/PhotoCull"
 
+# App icon (build it first with scripts/build-icon.sh)
+if [ -f "$ROOT/resources/PhotoCull.icns" ]; then
+  cp "$ROOT/resources/PhotoCull.icns" "$APP/Contents/Resources/PhotoCull.icns"
+else
+  echo "note: resources/PhotoCull.icns missing — run scripts/build-icon.sh"
+fi
+
 # Ad-hoc signature so macOS treats it as a normal app.
 codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "note: ad-hoc codesign skipped"
 
