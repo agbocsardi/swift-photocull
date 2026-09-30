@@ -101,7 +101,7 @@ struct ContentView: View {
                 Label("Finalize", systemImage: "checkmark.circle")
             }
             .disabled(app.visibleSessions.isEmpty)
-            .help("Finalize sessions (⌘⇧F)")
+            .help("Finalize selected sessions, or all visible sessions (⌘⇧F)")
 
             Button {
                 app.toggleInspector()

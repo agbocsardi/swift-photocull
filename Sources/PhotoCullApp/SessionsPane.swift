@@ -55,10 +55,13 @@ struct SessionsPane: View {
                 .buttonStyle(.plain)
                 .help("Clear selection (Esc)")
             }
-            Text(app.filter.label)
-                .font(Typo.caption)
-                .foregroundStyle(Palette.tertiary)
-                .help("Cycle filter (Tab)")
+            Button { app.cycleFilter() } label: {
+                Text(app.filter.label)
+                    .font(Typo.caption)
+                    .foregroundStyle(Palette.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Show next session filter (Tab when Sessions is focused)")
         }
     }
 }
@@ -85,7 +88,7 @@ private struct SessionRowView: View {
                 .foregroundStyle(isSelected ? Palette.accent : Palette.secondary.opacity(0.6))
                 .opacity(showsSelectionControl ? 1 : 0)
                 .onTapGesture { withAnimation(Motion.fast) { app.toggleSelection(row.date) } }
-                .help("Select for multi-session finalize (Space)")
+                .help(isSelected ? "Remove from multi-session selection" : "Select for multi-session finalize")
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -100,16 +103,16 @@ private struct SessionRowView: View {
                     Text("\(undecided)/\(row.total)")
                         .font(Typo.number)
                         .foregroundStyle(Palette.secondary)
-                        .help("undecided / total")
+                        .help("Undecided / total photos")
                     if row.keep > 0 {
                         Text("\(row.keep)")
                             .font(Typo.number).foregroundStyle(Palette.keep)
-                            .help("kept")
+                            .help("Kept photos")
                     }
                     if row.reject > 0 {
                         Text("\(row.reject)")
                             .font(Typo.number).foregroundStyle(Palette.reject)
-                            .help("rejected")
+                            .help("Rejected photos")
                     }
                     if row.cropped > 0 {
                         Image(systemName: "crop")
@@ -136,6 +139,7 @@ private struct SessionRowView: View {
         .onHover { hover.value = $0 }
         .onTapGesture { app.cursorDate = row.date }
         .onTapGesture(count: 2) { app.open(date: row.date) }
+        .help("\(row.date) — click to select, double-click to open")
         .contextMenu {
             Button("Open") { app.open(date: row.date) }
             Button("Finalize…") { app.finalizeStats = (try? [Finalize.summary(cfg: app.cfg, date: row.date)]) ?? []

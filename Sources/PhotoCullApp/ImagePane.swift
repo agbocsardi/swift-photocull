@@ -137,30 +137,42 @@ struct FloatingActionBar: View {
     var body: some View {
         HStack(spacing: 2) {
             action(app.currentDecision == .keep ? "checkmark.circle.fill" : "checkmark.circle",
-                   tint: Palette.keep, tip: "Keep (z)", filled: app.currentDecision == .keep) {
+                   tint: Palette.keep,
+                   tip: app.currentDecision == .keep
+                     ? "Undo keep for this photo (z)"
+                     : "Keep this photo and go to the next (z)",
+                   filled: app.currentDecision == .keep) {
                 app.mark(.keep)
             }
             action(app.currentDecision == .reject ? "xmark.circle.fill" : "xmark.circle",
-                   tint: Palette.reject, tip: "Reject (x)", filled: app.currentDecision == .reject) {
+                   tint: Palette.reject,
+                   tip: app.currentDecision == .reject
+                     ? "Undo reject for this photo (x)"
+                     : "Reject this photo and go to the next (x)",
+                   filled: app.currentDecision == .reject) {
                 app.mark(.reject)
             }
 
             Divider().frame(height: 16).overlay(Palette.separator)
 
             action("crop", tint: app.hasCrop ? Palette.crop : Palette.secondary,
-                   tip: app.hasCrop ? "Adjust crop (c)" : "Crop (c)", filled: false) {
+                   tip: app.hasCrop ? "Adjust the saved crop (c)" : "Crop without changing the original (c)",
+                   filled: false) {
                 app.enterCropMode()
             }
             action(app.showCroppedPreview ? "rectangle.inset.filled" : "rectangle",
                    tint: Palette.secondary,
-                   tip: app.showCroppedPreview ? "Show full frame (p)" : "Show cropped (p)",
+                   tip: app.hasCrop
+                     ? (app.showCroppedPreview ? "Show the full frame" : "Show the saved crop")
+                     : "Save a crop first to compare it with the full frame",
                    filled: false) {
                 app.showCroppedPreview.toggle()
             }
+            .disabled(!app.hasCrop)
 
             Divider().frame(height: 16).overlay(Palette.separator)
 
-            action("minus.magnifyingglass", tint: Palette.secondary, tip: "Zoom out (−)", filled: false) {
+            action("minus.magnifyingglass", tint: Palette.secondary, tip: "Zoom out (-)", filled: false) {
                 app.zoomOut()
             }
             Text(String(format: "%.0f%%", app.zoom * 100))
@@ -217,5 +229,6 @@ private struct FloatingButton: View {
         .buttonStyle(.plain)
         .onHover { hover.value = $0 }
         .help(tip)
+        .accessibilityLabel(Text(tip))
     }
 }

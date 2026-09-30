@@ -60,30 +60,36 @@ struct MenuBarView: View {
                     activate()
                 }
                 .disabled(app.ingestProgress.running)
+                .help("Copy photos from an SD card without changing the card")
 
                 MenuBarButton("Open PhotoCull", icon: "macwindow") { activate() }
+                    .help("Show the PhotoCull window")
 
-                MenuBarButton("Finalize All Sessions…", icon: "checkmark.circle") {
+                MenuBarButton("Finalize Sessions…", icon: "checkmark.circle") {
                     app.beginGlobalFinalize()
                     activate()
                 }
                 .disabled(app.sessions.isEmpty)
+                .help("Review selected sessions, or all visible sessions, before finalizing")
 
                 MenuBarButton("Check RAW Pairing", icon: "link") {
                     app.checkPairing()
                     activate()
                 }
                 .disabled(app.sessions.isEmpty)
+                .help("Check whether JPG files have their matching RAW files")
 
                 MenuBarButton("Reveal Inbox in Finder", icon: "folder") {
                     NSWorkspace.shared.open(URL(fileURLWithPath: app.cfg.paths.inbox))
                 }
+                .help("Open the inbox folder in Finder")
             }
             .padding(6)
 
             Divider().overlay(Palette.separator)
 
             MenuBarButton("Quit PhotoCull", icon: "power") { NSApp.terminate(nil) }
+                .help("Quit PhotoCull")
                 .padding(6)
         }
         .frame(width: 296)
@@ -147,6 +153,7 @@ private struct MenuBarRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hover.value = $0 }
+        .help("Open session \(date) (\(undecided) undecided of \(total) photos)")
     }
 }
 

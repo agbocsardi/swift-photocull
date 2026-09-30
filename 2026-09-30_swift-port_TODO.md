@@ -85,3 +85,11 @@ scythe as one silhouette with a substantial diagonal handle and hooked blade ove
 aperture; checked raster renders at 16/32/64px before packaging.
 
 Verified: `swift build` and `swift run PhotoCullTests` (326 checks).
+
+### 2026-09-30 (hover tips and menu bar icon)
+
+Added descriptive native hover tips to the photo action bar, sidebar controls, inspector,
+ingest/finalize sheets, and menu-bar actions. Corrected the preview toggle tip: `p` only
+works in crop mode. The sidebar filter label is now a real clickable button. The menu bar
+uses the bundled app icon, with a small status dot during ingest and a fallback when run
+outside an app bundle.

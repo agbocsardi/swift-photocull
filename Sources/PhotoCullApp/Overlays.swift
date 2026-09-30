@@ -188,12 +188,17 @@ struct FinalizeSheet: View {
 
                 SheetGroup(title: "Copies to \(app.cfg.paths.dump.replacingOccurrences(of: NSHomeDirectory(), with: "~"))") {
                     Picker("", selection: $app.cropExportMode) {
-                        Text("Keep JPGs with the crop applied").tag(CropExportMode.applyCrop)
-                        Text("Keep the original JPGs").tag(CropExportMode.original)
+                        Text("Keep JPGs with the crop applied")
+                            .help("Apply saved crops to exported copies; originals stay unchanged")
+                            .tag(CropExportMode.applyCrop)
+                        Text("Keep the original JPGs")
+                            .help("Export full-frame JPG copies without applying saved crops")
+                            .tag(CropExportMode.original)
                     }
                     .pickerStyle(.radioGroup)
                     .labelsHidden()
                     .font(Typo.callout)
+                    .help("Crop settings affect only exported JPG copies, not the originals")
                 }
             }
         } buttons: {
@@ -201,6 +206,7 @@ struct FinalizeSheet: View {
                 .keyboardShortcut(.cancelAction)
             Button("Finalize") { app.confirmFinalize() }
                 .keyboardShortcut(.defaultAction)
+                .help("Move rejects to Trash and keepers to the archive; export keeper JPGs")
         }
     }
 
@@ -263,6 +269,7 @@ struct IngestSheet: View {
                                     .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
+                                .help("Use \(url.lastPathComponent) as the photo source")
                             }
                         }
 
@@ -272,8 +279,10 @@ struct IngestSheet: View {
                                 .font(Typo.mono)
                                 .focused($pathFocused)
                                 .disabled(app.ingestProgress.running)
+                                .help("Folder to copy photos from; the source is not changed")
                             Button("Choose…") { chooseFolder() }
                                 .disabled(app.ingestProgress.running)
+                                .help("Choose a folder containing your photos")
                         }
                     }
                 }
@@ -312,6 +321,7 @@ struct IngestSheet: View {
             Button("Start Ingest") { app.startIngest() }
                 .keyboardShortcut(.defaultAction)
                 .disabled(app.ingestProgress.running || app.ingestSource.isEmpty)
+                .help("Copy photos into the inbox by capture date; the source is not changed")
         }
         .onAppear { pathFocused = false }
     }

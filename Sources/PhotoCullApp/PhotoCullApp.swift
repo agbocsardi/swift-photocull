@@ -67,11 +67,58 @@ struct PhotoCullApp: App {
             MenuBarView()
                 .environmentObject(app)
         } label: {
-            Image(systemName: app.ingestProgress.running
-                  ? "arrow.down.circle" : "camera.aperture")
+            Group {
+                if let icon = Self.menuBarIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                } else {
+                    Image(systemName: "camera.aperture")
+                        .resizable()
+                        .scaledToFit()
+                }
+            }
+            .frame(width: 18, height: 18)
+            .overlay(alignment: .topTrailing) {
+                if app.ingestProgress.running {
+                    Circle()
+                        .fill(.orange)
+                        .frame(width: 6, height: 6)
+                        .overlay(Circle().stroke(.background, lineWidth: 1))
+                        .offset(x: 2, y: -2)
+                }
+            }
+            .accessibilityLabel(app.ingestProgress.running ? "PhotoCull — ingesting" : "PhotoCull")
         }
         .menuBarExtraStyle(.window)
     }
+
+    private static let menuBarIcon: NSImage? = {
+        let fileManager = FileManager.default
+        // The packaged app has the icon in its bundle. SwiftPM runs do not,
+        // so also look beside the working directory and up from the executable.
+        var candidates: [URL] = []
+        if let bundled = Bundle.main.url(forResource: "PhotoCull", withExtension: "icns") {
+            candidates.append(bundled)
+        }
+        candidates.append(URL(fileURLWithPath: fileManager.currentDirectoryPath)
+            .appendingPathComponent("resources/PhotoCull.icns"))
+        if let executable = Bundle.main.executableURL {
+            var directory = executable.deletingLastPathComponent()
+            for _ in 0..<5 {
+                candidates.append(directory.appendingPathComponent("resources/PhotoCull.icns"))
+                directory.deleteLastPathComponent()
+            }
+        }
+        for url in candidates {
+            if let image = NSImage(contentsOf: url) {
+                // Keep the real app icon's colors in both light and dark menu bars.
+                image.isTemplate = false
+                return image
+            }
+        }
+        return nil
+    }()
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {

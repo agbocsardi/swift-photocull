@@ -321,6 +321,7 @@ struct EmptyState: View {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(ToolbarButtonStyle())
+                    .help("Choose photos to copy into the inbox (⌘⇧I)")
                     .padding(.top, 2)
             }
         }

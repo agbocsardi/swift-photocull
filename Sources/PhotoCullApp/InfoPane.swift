@@ -61,6 +61,7 @@ struct InfoPane: View {
                                         .buttonStyle(.plain)
                                         .font(Typo.caption)
                                         .foregroundStyle(Palette.reject)
+                                        .help("Remove the saved crop; the original photo stays unchanged")
                                 } else {
                                     Text("Full frame")
                                         .font(Typo.callout)
