@@ -68,6 +68,26 @@ func suitePairRepair() throws {
     let again = try PairRepair.apply(cfg: cfg)
     checkEqual(again.renamed, 0, "second run is a no-op")
 
+    // ---- audit log ---------------------------------------------------------
+    let logDir = try makeTempDir("repairlog")
+    let d3 = inbox.appendingPathComponent("2026-01-01")
+    try fm.createDirectory(at: d3, withIntermediateDirectories: true)
+    try touch(d3.appendingPathComponent("AAA1.JPG"), bytes: 10)
+    try touch(d3.appendingPathComponent("AAA1_2.RAF"), bytes: 20)
+    _ = try PairRepair.apply(cfg: cfg, includeArchive: false, logDirectory: logDir)
+    let logs = (try? fm.contentsOfDirectory(atPath: logDir.path)) ?? []
+    checkEqual(logs.count, 1, "apply wrote exactly one audit log")
+    if let log = logs.first,
+       let data = try? Data(contentsOf: logDir.appendingPathComponent(log)),
+       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        checkEqual(obj["renamed_count"] as? Int, 1, "audit log records the rename count")
+        let entries = obj["renames"] as? [[String: String]] ?? []
+        checkEqual(entries.first?["to"].map { ($0 as NSString).lastPathComponent }, "AAA1.RAF",
+                   "audit log records the destination path")
+    } else {
+        check(false, "audit log is readable JSON")
+    }
+
     // ---- suffix parsing ----------------------------------------------------
     checkEqual(PairRepair.splitSuffix("DSCF0001_2")?.base, "DSCF0001", "suffix base parsed")
     checkEqual(PairRepair.splitSuffix("DSCF0001_2")?.index, 2, "suffix index parsed")

@@ -120,15 +120,40 @@ public enum PairRepair {
     }
 
     /// Perform the renames from `report`. Re-plans first so the result is current.
+    ///
+    /// Only renames files. Nothing is ever modified, moved or deleted. A JSON log of
+    /// every `from -> to` pair is written next to the config file so the operation can
+    /// be audited or reversed by hand.
     @discardableResult
-    public static func apply(cfg: PCConfig, includeArchive: Bool = true) throws -> RepairReport {
+    public static func apply(cfg: PCConfig, includeArchive: Bool = true,
+                             logDirectory: URL? = nil) throws -> RepairReport {
         let report = plan(cfg: cfg, includeArchive: includeArchive)
+        var done: [(from: String, to: String)] = []
         for action in report.actions where action.kind == .renamed {
             guard let to = action.to else { continue }
             try FileManager.default.moveItem(at: action.from, to: to)
+            done.append((action.from.path, to.path))
         }
+        if !done.isEmpty { try? writeLog(done, to: logDirectory) }
         return RepairReport(actions: report.actions, renamed: report.renamed,
                             unpaired: report.unpaired, ambiguous: report.ambiguous, applied: true)
+    }
+
+    /// Write an audit log of performed renames. Failure to log is not fatal.
+    static func writeLog(_ renames: [(from: String, to: String)], to directory: URL?) throws {
+        let dir = directory ?? URL(fileURLWithPath: PCConfig.configPath).deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let url = dir.appendingPathComponent("pair-repair-\(stamp).json")
+        let payload: [String: Any] = [
+            "performed_at": stamp,
+            "renamed_count": renames.count,
+            "renames": renames.map { ["from": $0.from, "to": $0.to] },
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload,
+                                              options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: url)
     }
 
     /// `"DSCF0001_2"` -> `("DSCF0001", 2)`. Nil when there is no `_<digits>` suffix.

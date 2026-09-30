@@ -27,6 +27,8 @@ enum HeadlessCheck {
             if renamed.count > 12 { print("  … and \(renamed.count - 12) more") }
             if apply {
                 print("\nAPPLIED \(report.renamed) renames.")
+                print("An audit log was written to \(URL(fileURLWithPath: PCConfig.configPath).deletingLastPathComponent().path)/")
+                print("Only file names changed — no photo content was read, written or deleted.")
             } else {
                 print("\nDry run. Re-run with --apply to perform the renames.")
             }
