@@ -92,7 +92,8 @@ struct HelpSheet: View {
         (":R", "Check and repair RAW pairing"),
     ]
     private let navigation: [(String, String)] = [
-        ("j / k", "Next / previous photo"),
+        ("j / k · → / ←", "Next / previous photo"),
+        ("↓ / ↑", "Next / previous photo, or session in sidebar"),
         ("J / K", "Next / previous undecided photo"),
         ("1 – 4", "Focus sidebar, photo, info, filmstrip"),
         ("Enter", "Open the selected session"),

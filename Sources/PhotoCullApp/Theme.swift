@@ -92,13 +92,15 @@ enum Metric {
     static let controlHeight: CGFloat   = 28
     static let statusHeight: CGFloat    = 26
     static let sidebarRow: CGFloat      = 34
-    static let filmstripHeight: CGFloat = 128
+    static let filmstripHeight: CGFloat = 160
     static let inspectorWidth: CGFloat  = 260
     static let sidebarMin: CGFloat      = 200
     static let sidebarIdeal: CGFloat    = 232
 
+    /// Fit the whole image in this slot. Portraits display upright; landscape
+    /// images keep their own ratio. The selection ring uses the fitted size.
     static let thumbWidth: CGFloat  = 80
-    static let thumbHeight: CGFloat = 56
+    static let thumbHeight: CGFloat = 88
 
     static let inspectorLabelWidth: CGFloat = 64
 

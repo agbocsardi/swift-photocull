@@ -96,7 +96,7 @@ Each header shows its numeral, and the numeral lights up in the accent colour wh
 has keyboard focus. Panes must not contain raw spacing numbers — everything routes through
 `Metric` / `Typo` / `Palette`.
 
-The icon (`icon/icon-a.svg`) is a six-blade camera iris whose fourth blade lifts off as an amber
+The icon (`icon/icon-a.svg`) pairs a six-blade camera iris with a distinct amber
 scythe: camera first, scythe second. Build it with `scripts/build-icon.sh`, which rasterizes the
 SVG through AppKit (no third-party renderer) and produces `resources/PhotoCull.icns`.
 
@@ -117,6 +117,8 @@ inspect the interface from a terminal or an agent context.
 |-----|--------|
 | `z` / `x` | mark keep / reject (press again to undo) |
 | `j` / `k` | next / previous photo |
+| `→` / `←` | next / previous photo (in any pane) |
+| `↓` / `↑` | next / previous photo, or session when pane 1 has focus |
 | `J` / `K` | next / previous **undecided** photo |
 | `c` | enter crop mode |
 | `o` | open the current JPG in Preview |

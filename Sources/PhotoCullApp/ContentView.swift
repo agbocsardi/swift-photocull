@@ -131,7 +131,7 @@ struct StatusBar: View {
             return [("←↑↓→", "move"), ("⇧←↑↓→", "resize"), ("a", "aspect"),
                     ("r", "reset"), ("⏎", "apply"), ("esc", "cancel")]
         }
-        return [("z", "keep"), ("x", "reject"), ("c", "crop"), ("j/k", "next/prev"),
+        return [("z", "keep"), ("x", "reject"), ("c", "crop"), ("←/→", "prev/next"),
                 ("J/K", "undecided"), ("o", "preview"), ("1-4", "pane"),
                 ("tab", "filter"), (":f", "finalize"), ("?", "help")]
     }

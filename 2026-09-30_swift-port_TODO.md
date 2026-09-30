@@ -23,11 +23,13 @@
 - [x] Keyboard dispatch (`KeyMonitor`) matching the cull keymap
 - [x] `scripts/build-app.sh` → `dist/PhotoCull.app`
 - [x] `PhotoCull --check` headless diagnostic
-- [x] 323 automated checks passing
-- [ ] Apply `--repair-pairs` to the real library (**needs user approval**)
+- [x] 326 automated checks passing
+- [x] Apply `--repair-pairs` to the real library (user approved; 1116 RAW renames audited)
+- [x] Native light/dark UI, portrait-fit filmstrip, and scythe app icon
+- [x] Arrow-key navigation alongside j/k
 - [ ] Confirm the crop UX feels right in a real culling session
 - [ ] Optional: RAW (RAF/RW2) preview decoding via Core Image
-- [ ] Optional: light-mode palette
+- [x] Semantic light/dark palette
 - [ ] Optional: video file support
 
 ## Open questions for the user
@@ -66,3 +68,20 @@ Verified: 323/323 checks pass; `PhotoCull --check` reads a real 28-session inbox
 The library was inspected read-only — no file in `~/Pictures/PhotoCull` was modified.
 
 Next: get approval before running `--repair-pairs --apply`, and try a real culling session.
+
+### 2026-09-30 (follow-up) — filmstrip, arrow navigation, scythe icon
+
+The filmstrip now fits full EXIF-oriented photos without cropping; portrait frames display
+upright within 80×88pt slots, and the selection ring hugs the actual image dimensions. Raised
+the strip to 160pt. Verified light and dark app-bundle snapshots; the initial live mismatch came
+from an older running app, which was quit and reopened with the current bundle.
+
+Arrow keys now supplement vim keys: left/right navigate photos in every pane; up/down navigate
+sessions while the sidebar has focus and photos elsewhere. Crop mode intercepts arrows first.
+The help sheet, status hint, and README now describe the mapping.
+
+The first icon revision looked like a second ring arc at 32px. The final revision draws an amber
+scythe as one silhouette with a substantial diagonal handle and hooked blade over a six-blade
+aperture; checked raster renders at 16/32/64px before packaging.
+
+Verified: `swift build` and `swift run PhotoCullTests` (326 checks).

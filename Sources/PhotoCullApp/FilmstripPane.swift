@@ -59,22 +59,32 @@ private struct ThumbCell: View {
 
     private var isCropped: Bool { !(crop?.isFullFrame ?? true) }
 
+    /// The cache is already EXIF-orientated. Fit its actual dimensions in the
+    /// filmstrip slot, so neither the photo nor its selection ring is cropped.
+    private var imageSize: CGSize {
+        guard let cg = thumbs.cached(for: pair.jpg) else {
+            return CGSize(width: Metric.thumbHeight * 2 / 3, height: Metric.thumbHeight)
+        }
+        let scale = min(Metric.thumbWidth / CGFloat(cg.width),
+                        Metric.thumbHeight / CGFloat(cg.height))
+        return CGSize(width: CGFloat(cg.width) * scale,
+                      height: CGFloat(cg.height) * scale)
+    }
+
     var body: some View {
         VStack(spacing: 3) {
             ZStack {
-                RoundedRectangle(cornerRadius: Metric.radiusThumb, style: .continuous)
-                    .fill(Palette.quaternary.opacity(0.25))
+                Rectangle().fill(Palette.quaternary.opacity(0.25))
                 if let cg = thumbs.cached(for: pair.jpg) {
                     Image(decorative: cg, scale: 1)
                         .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: Metric.radiusThumb,
-                                                    style: .continuous))
+                        .scaledToFit()
                 } else {
                     ProgressView().controlSize(.mini).scaleEffect(0.5)
                 }
             }
-            .frame(width: Metric.thumbWidth, height: Metric.thumbHeight)
+            .frame(width: imageSize.width, height: imageSize.height)
+            .clipShape(RoundedRectangle(cornerRadius: Metric.radiusThumb, style: .continuous))
             .overlay(alignment: .topTrailing) {
                 if decision != .undecided {
                     Image(systemName: decision == .keep ? "checkmark.circle.fill" : "xmark.circle.fill")
@@ -114,6 +124,9 @@ private struct ThumbCell: View {
             .scaleEffect(isCurrent ? 1.0 : (hover.value ? 1.02 : 1.0))
             .animation(Motion.fast, value: hover.value)
             .animation(Motion.fast, value: isCurrent)
+            // Keep every index in a stable-width slot, but draw the ring only
+            // around the visible photo, never the empty sides of that slot.
+            .frame(width: Metric.thumbWidth, height: Metric.thumbHeight)
 
             Text("\(index + 1)")
                 .font(Typo.number)

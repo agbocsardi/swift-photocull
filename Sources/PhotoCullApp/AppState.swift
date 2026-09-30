@@ -747,6 +747,22 @@ final class AppState: ObservableObject {
             return false
         }
 
+        // Arrow keys supplement j/k. Horizontal arrows always move through
+        // photos; vertical arrows move through sessions when the sidebar is
+        // focused, otherwise through photos. Crop mode handles its own arrows
+        // above, before reaching this global map.
+        switch key.arrow {
+        case .left: nav(.prev); return true
+        case .right: nav(.next); return true
+        case .up:
+            focusedPane == .sessions ? moveCursor(.prev) : nav(.prev)
+            return true
+        case .down:
+            focusedPane == .sessions ? moveCursor(.next) : nav(.next)
+            return true
+        case nil: break
+        }
+
         switch key.chars {
         case "j":
             focusedPane == .sessions ? moveCursor(.next) : nav(.next)
