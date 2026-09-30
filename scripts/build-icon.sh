@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Render icon/<name>.svg into resources/PhotoCull.icns.
-# Usage: scripts/build-icon.sh [icon-name]     (default: icon)
+# Render the Dock icon and monochrome menu-bar template.
+# Usage: scripts/build-icon.sh [icon-name]     (default: icon-a)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-NAME="${1:-icon}"
+NAME="${1:-icon-a}"
 SVG="icon/${NAME}.svg"
 [ -f "$SVG" ] || { echo "missing $SVG"; exit 1; }
 
@@ -29,4 +29,10 @@ done
 mkdir -p resources
 iconutil -c icns "$ICONSET" -o resources/PhotoCull.icns
 echo "==> resources/PhotoCull.icns from $SVG"
-ls -la resources/PhotoCull.icns
+
+# Template images use alpha as a mask; a 36px raster maps to 18pt on Retina.
+MENU_SVG="icon/menubar-outline.svg"
+[ -f "$MENU_SVG" ] || { echo "missing $MENU_SVG"; exit 1; }
+"$BIN" "$MENU_SVG" resources/PhotoCullMenuBar.png 36 >/dev/null
+echo "==> resources/PhotoCullMenuBar.png from $MENU_SVG"
+ls -la resources/PhotoCull.icns resources/PhotoCullMenuBar.png

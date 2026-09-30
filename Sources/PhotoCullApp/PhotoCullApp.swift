@@ -67,57 +67,25 @@ struct PhotoCullApp: App {
             MenuBarView()
                 .environmentObject(app)
         } label: {
-            Group {
-                if let icon = Self.menuBarIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .interpolation(.high)
-                } else {
-                    Image(systemName: "camera.aperture")
-                        .resizable()
-                        .scaledToFit()
-                }
-            }
-            .frame(width: 18, height: 18)
-            .overlay(alignment: .topTrailing) {
-                if app.ingestProgress.running {
-                    Circle()
-                        .fill(.orange)
-                        .frame(width: 6, height: 6)
-                        .overlay(Circle().stroke(.background, lineWidth: 1))
-                        .offset(x: 2, y: -2)
-                }
-            }
-            .accessibilityLabel(app.ingestProgress.running ? "PhotoCull — ingesting" : "PhotoCull")
+            // A single image is reliable in MenuBarExtra's status-item renderer.
+            Image(nsImage: Self.menuBarIcon)
         }
         .menuBarExtraStyle(.window)
     }
 
-    private static let menuBarIcon: NSImage? = {
-        let fileManager = FileManager.default
-        // The packaged app has the icon in its bundle. SwiftPM runs do not,
-        // so also look beside the working directory and up from the executable.
-        var candidates: [URL] = []
-        if let bundled = Bundle.main.url(forResource: "PhotoCull", withExtension: "icns") {
-            candidates.append(bundled)
+    private static let menuBarIcon: NSImage = {
+        let bundled = Bundle.main.url(forResource: "PhotoCullMenuBar", withExtension: "png")
+        let development = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("resources/PhotoCullMenuBar.png")
+        if let icon = bundled.flatMap({ NSImage(contentsOf: $0) })
+            ?? NSImage(contentsOf: development) {
+            // A transparent, monochrome 36px image displayed at 18pt.
+            // Template tint follows the system's light or dark menu bar.
+            icon.size = NSSize(width: 18, height: 18)
+            icon.isTemplate = true
+            return icon
         }
-        candidates.append(URL(fileURLWithPath: fileManager.currentDirectoryPath)
-            .appendingPathComponent("resources/PhotoCull.icns"))
-        if let executable = Bundle.main.executableURL {
-            var directory = executable.deletingLastPathComponent()
-            for _ in 0..<5 {
-                candidates.append(directory.appendingPathComponent("resources/PhotoCull.icns"))
-                directory.deleteLastPathComponent()
-            }
-        }
-        for url in candidates {
-            if let image = NSImage(contentsOf: url) {
-                // Keep the real app icon's colors in both light and dark menu bars.
-                image.isTemplate = false
-                return image
-            }
-        }
-        return nil
+        return NSImage(systemSymbolName: "camera.aperture", accessibilityDescription: "PhotoCull")!
     }()
 }
 

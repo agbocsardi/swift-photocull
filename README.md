@@ -97,9 +97,10 @@ has keyboard focus. Panes must not contain raw spacing numbers — everything ro
 `Metric` / `Typo` / `Palette`.
 
 The icon (`icon/icon-a.svg`) pairs a six-blade camera iris with a distinct amber
-scythe: camera first, scythe second. The menu bar uses the same bundled icon. Build it with
-`scripts/build-icon.sh`, which rasterizes the SVG through AppKit (no third-party renderer)
-and produces `resources/PhotoCull.icns`.
+scythe: camera first, scythe second. The menu bar uses a transparent monochrome outline
+of the same motif (`icon/menubar-outline.svg`), tinted by macOS like other status icons.
+Build both with `scripts/build-icon.sh`, which rasterizes SVG through AppKit (no third-party
+renderer) into `resources/PhotoCull.icns` and `resources/PhotoCullMenuBar.png`.
 
 ### Verifying the UI without Screen Recording permission
 

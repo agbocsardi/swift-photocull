@@ -25,6 +25,11 @@ if [ -f "$ROOT/resources/PhotoCull.icns" ]; then
 else
   echo "note: resources/PhotoCull.icns missing — run scripts/build-icon.sh"
 fi
+if [ -f "$ROOT/resources/PhotoCullMenuBar.png" ]; then
+  cp "$ROOT/resources/PhotoCullMenuBar.png" "$APP/Contents/Resources/PhotoCullMenuBar.png"
+else
+  echo "note: resources/PhotoCullMenuBar.png missing — run scripts/build-icon.sh"
+fi
 
 # Ad-hoc signature so macOS treats it as a normal app.
 codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "note: ad-hoc codesign skipped"

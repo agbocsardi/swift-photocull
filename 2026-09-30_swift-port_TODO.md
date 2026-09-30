@@ -91,5 +91,19 @@ Verified: `swift build` and `swift run PhotoCullTests` (326 checks).
 Added descriptive native hover tips to the photo action bar, sidebar controls, inspector,
 ingest/finalize sheets, and menu-bar actions. Corrected the preview toggle tip: `p` only
 works in crop mode. The sidebar filter label is now a real clickable button. The menu bar
-uses the bundled app icon, with a small status dot during ingest and a fallback when run
-outside an app bundle.
+uses the bundled app icon, with a development fallback outside an app bundle. The first
+complex label (Group + overlay) made the status item vanish; a single 18pt image fixed it.
+Verified by a direct screen capture of the running app after relaunch.
+
+### 2026-09-30 (menu bar outline)
+
+User feedback: the full-color square app icon appeared after simplifying MenuBarExtra to a
+single image, but was too heavy among macOS menu-bar glyphs. Replaced it with a transparent
+monochrome outline of the same aperture-and-scythe motif as a template image. The colorful
+Dock icon remains unchanged; the menu-bar glyph follows system light/dark tint.
+
+Validation: checked 18/36/54px raster previews on dark and light sample backgrounds;
+`PhotoCullMenuBar.png` is 36×36 transparent. The running app reports one enabled, clickable
+36×24pt status item through Accessibility. The display returned black screen captures (likely
+locked/asleep), so the new glyph was not visually verified in the live system menu bar.
+`swift build`, the release bundle build, and all 326 core checks passed.
