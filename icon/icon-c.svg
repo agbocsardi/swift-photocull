@@ -8,15 +8,15 @@
       <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.10"/>
       <stop offset="0.30" stop-color="#FFFFFF" stop-opacity="0"/>
     </linearGradient>
-    <linearGradient id="line" gradientUnits="userSpaceOnUse" x1="330" y1="300" x2="720" y2="760">
+    <linearGradient id="line" gradientUnits="userSpaceOnUse" x1="340" y1="310" x2="720" y2="770">
       <stop offset="0" stop-color="#7FBBB3"/>
       <stop offset="1" stop-color="#A7C080"/>
     </linearGradient>
   </defs>
   <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#bg)"/>
   <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#sheen)"/>
-  <g transform="translate(-16,10)">
-    <path fill="none" stroke="url(#line)" stroke-width="58" stroke-linecap="round" stroke-linejoin="round" d="M 895.39 372.46 C 839.81 255.88 742.41 194.87 631.99 242.50 A 295 295 0 1 1 238.48 622.51 L 228.21 562.04 L 230.84 502.18 L 245.66 445.59 L 271.43 394.67 L 306.47 351.43 L 348.74 317.44 L 395.97 293.79 L 445.76 281.00 L 495.71 279.10 L 543.54 287.57 L 587.17 305.46 L 624.85 331.40 L 655.19 363.73 L 677.22 400.56 L 690.44 439.91 L 694.79 479.77 L 690.67 518.24 L 678.83 553.60 L 660.39 584.38 L 636.72 609.44 L 611.72 626.72"/>
-    <path fill="#DBBC7F" d="M 830.35 297.27 Q 861.88 238.65 968.04 398.30 Q 911.88 397.33 900.19 457.44 Z"/>
+  <g transform="translate(-14,8)" fill="none" stroke="url(#line)" stroke-width="58" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 630.00 234.01 A 302 302 0 1 1 236.11 634.83 L 223.65 573.29 L 224.42 512.00 L 237.76 453.71 L 262.45 400.89 L 296.84 355.68 L 338.87 319.72 L 386.23 294.17 L 436.50 279.63 L 487.21 276.18 L 536.03 283.35 L 580.82 300.20 L 619.74 325.38 L 651.36 357.22 L 674.67 393.82 L 689.10 433.15 L 694.57 473.19 L 691.44 512.00 L 680.47 547.81 L 662.75 579.12 L 639.67 604.76 L 612.77 623.92 L 610.41 625.21"/>
+    <path d="M 630.00 234.01 C 703.71 216.79 825.63 266.97 891.64 373.82 C 919.01 483.54 891.91 551.93 855.16 536.00"/>
   </g>
 </svg>
