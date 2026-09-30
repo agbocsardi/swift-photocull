@@ -46,6 +46,29 @@ enum Modal: Identifiable, Equatable {
 
 enum NavDir { case next, prev }
 
+/// App-only preference. System inherits macOS appearance; the other choices
+/// override PhotoCull without changing the computer's appearance.
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    var symbol: String {
+        switch self {
+        case .system: return "circle.lefthalf.filled"
+        case .light: return "sun.max"
+        case .dark: return "moon"
+        }
+    }
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 /// Aspect presets available in crop mode.
 enum CropAspect: String, CaseIterable {
     case free = "Free"
@@ -92,6 +115,9 @@ final class AppState: ObservableObject {
     @Published var selectedDates: Set<String> = []
     @Published var modal: Modal?
     @Published var showInspector = true
+    @Published var appearance: AppAppearance = .system {
+        didSet { applyAppearance() }
+    }
     @Published var commandMode = false
     @Published var commandBuffer = ""
     @Published var toast: String?
@@ -123,8 +149,22 @@ final class AppState: ObservableObject {
 
     private var toastTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
+    private static let appearanceKey = "PhotoCull.appearance"
+
+    private func applyAppearance() {
+        if appearance == .system {
+            UserDefaults.standard.removeObject(forKey: Self.appearanceKey)
+        } else {
+            UserDefaults.standard.set(appearance.rawValue, forKey: Self.appearanceKey)
+        }
+        NSApplication.shared.appearance = appearance.nsAppearance
+    }
 
     init() {
+        let saved = UserDefaults.standard.string(forKey: Self.appearanceKey) ?? "system"
+        appearance = AppAppearance(rawValue: saved) ?? .system
+        applyAppearance()
+
         // ImageLoader owns its own @Published state, so views observing AppState
         // would never see a decoded photo arrive. Re-emit its changes.
         imageLoader.objectWillChange

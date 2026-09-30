@@ -107,3 +107,14 @@ Validation: checked 18/36/54px raster previews on dark and light sample backgrou
 36×24pt status item through Accessibility. The display returned black screen captures (likely
 locked/asleep), so the new glyph was not visually verified in the live system menu bar.
 `swift build`, the release bundle build, and all 326 core checks passed.
+
+### 2026-09-30 (appearance preference)
+
+Added a toolbar Appearance menu with System / Light / Dark. System (default) inherits macOS
+automatically; Light and Dark override PhotoCull only. Preference persists in UserDefaults,
+not the shared Go config. Menu-bar outline still uses system tint.
+
+Verified from the packaged release app: a saved Dark preference rendered dark without any
+snapshot override; after deleting that temporary preference, System rendered light to match
+the current macOS setting. Restored the original unset preference before relaunch.
+`swift run PhotoCullTests` passed all 326 checks.

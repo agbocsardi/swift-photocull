@@ -110,6 +110,23 @@ struct ContentView: View {
             }
             .help("Show or hide the info inspector (⌘I)")
 
+            Menu {
+                ForEach(AppAppearance.allCases) { choice in
+                    Button {
+                        app.appearance = choice
+                    } label: {
+                        if app.appearance == choice {
+                            Label(choice.title, systemImage: "checkmark")
+                        } else {
+                            Text(choice.title)
+                        }
+                    }
+                }
+            } label: {
+                Label("Appearance", systemImage: app.appearance.symbol)
+            }
+            .help("Appearance: \(app.appearance.title). Choose System, Light, or Dark")
+
             Button {
                 app.modal = .help
             } label: {

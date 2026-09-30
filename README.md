@@ -87,7 +87,7 @@ aesthetic. `Sources/PhotoCullApp/Theme.swift` is the whole design system:
 | Layout | `NavigationSplitView` — sidebar (sessions) + content (canvas, filmstrip) + `.inspector` (info) |
 | Chrome | Real unified toolbar; traffic lights and the drag zone behave natively |
 | Type | SF Pro on Apple's scale (13pt body). SF Mono only for filenames, paths and keycaps. Nothing below 9pt |
-| Colour | Semantic system colours, so light and dark both work and the user's accent colour is respected |
+| Colour | Semantic system colours, following macOS by default; the toolbar Appearance menu can override Light or Dark |
 | Depth | Materials/vibrancy for sidebar, inspector, filmstrip and status bar; layered shadows on floating chrome |
 | Spacing | One `Metric.paneInset` (16pt) shared by all four panes, on an 8pt grid |
 
@@ -101,6 +101,13 @@ scythe: camera first, scythe second. The menu bar uses a transparent monochrome 
 of the same motif (`icon/menubar-outline.svg`), tinted by macOS like other status icons.
 Build both with `scripts/build-icon.sh`, which rasterizes SVG through AppKit (no third-party
 renderer) into `resources/PhotoCull.icns` and `resources/PhotoCullMenuBar.png`.
+
+### Appearance
+
+Use the **Appearance** button in the toolbar to choose **System** (default), **Light**, or
+**Dark**. System follows macOS as it changes. An override applies only to PhotoCull and is
+saved in its app preferences (`PhotoCull.appearance`); it does not change the Go app's config.
+The menu-bar outline remains a system-tinted template icon in every mode.
 
 ### Verifying the UI without Screen Recording permission
 
