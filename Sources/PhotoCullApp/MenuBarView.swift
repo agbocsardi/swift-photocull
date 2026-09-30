@@ -1,7 +1,8 @@
 import SwiftUI
 import PhotoCullCore
 
-/// Contents of the menu bar extra.
+/// Contents of the menu bar extra. Native menu-bar styling: quiet rows,
+/// hover tint, compact counts.
 struct MenuBarView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.openWindow) private var openWindow
@@ -14,110 +15,101 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 0) {
             if app.ingestProgress.running {
                 ingestStatus
-                Divider()
+                Divider().overlay(Palette.separator)
             }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Inbox")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(EF.aqua)
-                Text("\(app.sessions.count) session\(app.sessions.count == 1 ? "" : "s") · \(undecidedTotal) undecided")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(EF.text)
-                ForEach(app.sessions.prefix(6)) { row in
-                    Button {
-                        app.open(date: row.date)
-                        activate()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(row.date)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(EF.subtle)
-                            Badge(text: row.status.rawValue, color: row.status.color)
-                            Spacer(minLength: 0)
-                            Text("\(row.total - row.keep - row.reject)/\(row.total)")
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundStyle(EF.bg3)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("INBOX")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.4)
+                    .foregroundStyle(Palette.tertiary)
+
+                if app.sessions.isEmpty {
+                    Text("No sessions")
+                        .font(Typo.callout)
+                        .foregroundStyle(Palette.tertiary)
+                } else {
+                    Text("\(app.sessions.count) session\(app.sessions.count == 1 ? "" : "s") · \(undecidedTotal) undecided")
+                        .font(Typo.callout)
+                        .foregroundStyle(Palette.secondary)
+
+                    ForEach(app.sessions.prefix(6)) { row in
+                        MenuBarRow(date: row.date,
+                                   status: row.status,
+                                   undecided: row.total - row.keep - row.reject,
+                                   total: row.total) {
+                            app.open(date: row.date)
+                            activate()
                         }
                     }
-                    .buttonStyle(.borderless)
-                }
-                if app.sessions.count > 6 {
-                    Text("+ \(app.sessions.count - 6) more…")
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(EF.bg3)
+                    if app.sessions.count > 6 {
+                        Text("+ \(app.sessions.count - 6) more…")
+                            .font(Typo.caption)
+                            .foregroundStyle(Palette.quaternary)
+                            .padding(.leading, 6)
+                    }
                 }
             }
             .padding(10)
 
-            Divider()
+            Divider().overlay(Palette.separator)
 
-            VStack(alignment: .leading, spacing: 2) {
-                menuButton("Ingest from SD card…", icon: "square.and.arrow.down") {
+            VStack(alignment: .leading, spacing: 1) {
+                MenuBarButton("Ingest from SD Card…", icon: "square.and.arrow.down") {
                     app.beginIngest()
                     activate()
                 }
                 .disabled(app.ingestProgress.running)
 
-                menuButton("Open PhotoCull", icon: "macwindow") { activate() }
+                MenuBarButton("Open PhotoCull", icon: "macwindow") { activate() }
 
-                menuButton("Finalize all sessions…", icon: "checkmark.circle") {
+                MenuBarButton("Finalize All Sessions…", icon: "checkmark.circle") {
                     app.beginGlobalFinalize()
                     activate()
                 }
                 .disabled(app.sessions.isEmpty)
 
-                menuButton("Check RAW pairing", icon: "link") {
+                MenuBarButton("Check RAW Pairing", icon: "link") {
                     app.checkPairing()
+                    activate()
                 }
                 .disabled(app.sessions.isEmpty)
 
-                menuButton("Re-pair RAW files…", icon: "link.badge.plus") {
-                    app.repairPairingInteractive()
-                }
-                .disabled(app.sessions.isEmpty)
-
-                menuButton("Reveal inbox in Finder", icon: "folder") {
+                MenuBarButton("Reveal Inbox in Finder", icon: "folder") {
                     NSWorkspace.shared.open(URL(fileURLWithPath: app.cfg.paths.inbox))
                 }
             }
             .padding(6)
 
-            Divider()
+            Divider().overlay(Palette.separator)
 
-            VStack(alignment: .leading, spacing: 2) {
-                menuButton("Quit PhotoCull", icon: "power") { NSApp.terminate(nil) }
-            }
-            .padding(6)
+            MenuBarButton("Quit PhotoCull", icon: "power") { NSApp.terminate(nil) }
+                .padding(6)
         }
-        .frame(width: 300)
-        .background(EF.bg)
+        .frame(width: 296)
+        .background(Palette.window)
     }
 
     private var ingestStatus: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Ingesting…")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(EF.green)
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Ingesting…", systemImage: "arrow.down.circle")
+                .font(Typo.caption.weight(.semibold))
+                .foregroundStyle(Palette.keep)
             ProgressView(value: Double(app.ingestProgress.copied),
                          total: Double(max(1, app.ingestProgress.total)))
-                .tint(EF.green)
-            Text("\(app.ingestProgress.copied)/\(app.ingestProgress.total) · \(app.ingestProgress.current)")
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(EF.bg3)
+                .tint(Palette.keep)
+            Text("\(app.ingestProgress.copied) of \(app.ingestProgress.total) · \(app.ingestProgress.current)")
+                .font(Typo.monoSmall)
+                .foregroundStyle(Palette.tertiary)
                 .lineLimit(1)
+                .truncationMode(.middle)
         }
         .padding(10)
     }
 
-    private func menuButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { MenuRowLabel(title: title, icon: icon) }
-            .buttonStyle(.plain)
-    }
-
     private func activate() {
         NSApp.activate(ignoringOtherApps: true)
-        if let w = NSApp.windows.first(where: { $0.canBecomeMain && $0.isVisible == false }) {
+        if let w = NSApp.windows.first(where: { $0.canBecomeMain }) {
             w.makeKeyAndOrderFront(nil)
         } else {
             openWindow(id: "main")
@@ -126,22 +118,66 @@ struct MenuBarView: View {
     }
 }
 
-struct MenuRowLabel: View {
-    let title: String
-    let icon: String
+private struct MenuBarRow: View {
+    let date: String
+    let status: FolderStatus
+    let undecided: Int
+    let total: Int
+    let action: () -> Void
+
     @StateObject private var hover = ViewState(false)
 
     var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: icon).font(.system(size: 11)).frame(width: 14)
-            Text(title).font(.system(size: 11))
-            Spacer(minLength: 0)
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(date)
+                    .font(Typo.mono)
+                    .foregroundStyle(Palette.secondary)
+                DecisionBadge(text: status.rawValue, color: status.color, compact: true)
+                Spacer(minLength: 0)
+                Text("\(undecided)/\(total)")
+                    .font(Typo.number)
+                    .foregroundStyle(Palette.tertiary)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(hover.value ? Palette.hover : Color.clear))
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .foregroundStyle(hover.value ? EF.text : EF.subtle)
-        .background(RoundedRectangle(cornerRadius: 4).fill(hover.value ? EF.bg1 : Color.clear))
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .onHover { hover.value = $0 }
+    }
+}
+
+private struct MenuBarButton: View {
+    let title: String
+    let icon: String
+    let action: () -> Void
+
+    @StateObject private var hover = ViewState(false)
+
+    init(_ title: String, icon: String, action: @escaping () -> Void) {
+        self.title = title; self.icon = icon; self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 12))
+                    .frame(width: 15)
+                Text(title).font(Typo.body)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .foregroundStyle(hover.value ? Palette.label : Palette.secondary)
+            .background(RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(hover.value ? Palette.hover : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
         .onHover { hover.value = $0 }
     }
 }

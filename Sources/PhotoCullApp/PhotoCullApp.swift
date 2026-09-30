@@ -23,38 +23,43 @@ struct PhotoCullApp: App {
         WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(app)
-                .frame(minWidth: 1000, minHeight: 640)
-                .background(EF.bg)
-                .preferredColorScheme(.dark)
+                .frame(minWidth: 940, minHeight: 620)
         }
-        .defaultSize(width: 1440, height: 900)
-        .windowToolbarStyle(.unifiedCompact)
+        .defaultSize(width: 1400, height: 880)
+        // Unified toolbar: the app title and actions live in the real title bar,
+        // so the traffic lights and the drag zone behave natively.
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {}
-            CommandMenu("Cull") {
-                Button("Ingest from SD card…") { app.beginIngest() }
+            CommandGroup(after: .sidebar) {
+                Button("Show Info Inspector") { app.toggleInspector() }
                     .keyboardShortcut("i", modifiers: .command)
-                Button("Finalize current session…") { app.beginFinalizeCurrent() }
+            }
+            CommandMenu("Cull") {
+                Button("Ingest from SD Card…") { app.beginIngest() }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                Button("Finalize Current Session…") { app.beginFinalizeCurrent() }
                     .keyboardShortcut("f", modifiers: .command)
                     .disabled(app.activeDate == nil)
-                Button("Finalize selected sessions…") { app.beginGlobalFinalize() }
+                Button("Finalize Selected Sessions…") { app.beginGlobalFinalize() }
                     .keyboardShortcut("f", modifiers: [.command, .shift])
                     .disabled(app.sessions.isEmpty)
                 Divider()
-                Button("Reload inbox") { app.reloadLibrary() }
-                    .keyboardShortcut("r", modifiers: .command)
-                Button("Crop current photo") { app.enterCropMode() }
+                Button("Crop Current Photo") { app.enterCropMode() }
                     .keyboardShortcut("k", modifiers: .command)
                     .disabled(app.currentPair == nil)
-                Divider()
-                Button("Check RAW pairing") { app.checkPairing() }
-                    .disabled(app.sessions.isEmpty)
-                Button("Re-pair RAW files…") { app.repairPairingInteractive() }
-                    .disabled(app.sessions.isEmpty)
-                Divider()
                 Button("Open in Preview") { app.openInPreview() }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
                     .disabled(app.currentPair == nil)
+                Button("Reveal in Finder") { app.revealInFinder() }
+                    .disabled(app.currentPair == nil)
+                Divider()
+                Button("Reload Inbox") { app.reloadLibrary() }
+                    .keyboardShortcut("r", modifiers: .command)
+                Button("Check RAW Pairing") { app.checkPairing() }
+                    .disabled(app.sessions.isEmpty)
+                Button("Re-pair RAW Files…") { app.repairPairingInteractive() }
+                    .disabled(app.sessions.isEmpty)
             }
         }
 
@@ -63,8 +68,7 @@ struct PhotoCullApp: App {
                 .environmentObject(app)
         } label: {
             Image(systemName: app.ingestProgress.running
-                  ? "arrow.down.circle"
-                  : "camera.aperture")
+                  ? "arrow.down.circle" : "camera.aperture")
         }
         .menuBarExtraStyle(.window)
     }
@@ -75,6 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         KeyMonitor.shared.start()
+        Snapshot.applyRequestedAppearance()
+        Snapshot.scheduleIfRequested()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

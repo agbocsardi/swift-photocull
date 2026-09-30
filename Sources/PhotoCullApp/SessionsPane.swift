@@ -1,17 +1,25 @@
 import SwiftUI
 import PhotoCullCore
 
+/// Sidebar: the list of inbox sessions. Uses native sidebar row styling —
+/// subtle hover, quiet selection, no heavy borders.
 struct SessionsPane: View {
     @EnvironmentObject var app: AppState
 
     var body: some View {
-        PaneBox(number: 1, title: "Sessions",
-                focused: app.focusedPane == .sessions,
-                trailing: AnyView(trailing)) {
+        VStack(spacing: 0) {
+            SectionHeader(text: "Sessions", number: 1,
+                          focused: app.focusedPane == .sessions,
+                          trailing: AnyView(trailing))
+
             if app.visibleSessions.isEmpty {
-                EmptyHint(text: app.sessions.isEmpty
-                          ? "No sessions in inbox.\nPress ⌘I to ingest photos."
-                          : "No sessions match the “\(app.filter.label)” filter.")
+                EmptyState(icon: "photo.stack",
+                           title: app.sessions.isEmpty ? "No sessions" : "Nothing matches",
+                           message: app.sessions.isEmpty
+                             ? "Ingest photos from an SD card to start culling."
+                             : "No sessions match the “\(app.filter.label)” filter.",
+                           actionTitle: app.sessions.isEmpty ? "Ingest Photos…" : nil,
+                           action: app.sessions.isEmpty ? { app.beginIngest() } : nil)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -21,113 +29,125 @@ struct SessionsPane: View {
                                     .id(row.date)
                             }
                         }
-                        .padding(4)
+                        .padding(.horizontal, 6)
+                        .padding(.bottom, 8)
                     }
                     .onChange(of: app.cursorDate) { _, new in
                         guard let new else { return }
-                        withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(new, anchor: .center) }
+                        withAnimation(Motion.fast) { proxy.scrollTo(new, anchor: .center) }
                     }
                 }
             }
         }
+        .background(Surface.chrome)
     }
 
     private var trailing: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 6) {
             if !app.selectedDates.isEmpty {
                 Button {
-                    app.clearSelection()
+                    withAnimation(Motion.fast) { app.clearSelection() }
                 } label: {
-                    Text("\(app.selectedDates.count) selected ✕")
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(EF.yellow)
+                    Text("\(app.selectedDates.count) ✕")
+                        .font(Typo.caption.weight(.semibold))
+                        .foregroundStyle(Palette.warning)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
                 .help("Clear selection (Esc)")
             }
             Text(app.filter.label)
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .foregroundStyle(EF.subtle)
+                .font(Typo.caption)
+                .foregroundStyle(Palette.tertiary)
                 .help("Cycle filter (Tab)")
         }
     }
 }
 
+/// One session row. Selection is quiet — a soft fill plus a bold date — as in
+/// native sidebars, rather than a loud colour block.
 private struct SessionRowView: View {
     @EnvironmentObject var app: AppState
     let row: SessionRow
 
+    @StateObject private var hover = ViewState(false)
+
     private var isCursor: Bool { app.cursorDate == row.date }
     private var isActive: Bool { app.activeDate == row.date }
     private var isSelected: Bool { app.selectedDates.contains(row.date) }
+    private var undecided: Int { row.total - row.keep - row.reject }
 
     var body: some View {
-        HStack(spacing: 7) {
-            Button {
-                app.toggleSelection(row.date)
-            } label: {
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 11))
-                    .foregroundStyle(isSelected ? EF.blue : EF.bg3)
-            }
-            .buttonStyle(.borderless)
-            .help("Select for multi-session finalize (Space)")
+        HStack(spacing: 8) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 12))
+                .foregroundStyle(isSelected ? Palette.accent : Palette.quaternary)
+                .onTapGesture { withAnimation(Motion.fast) { app.toggleSelection(row.date) } }
+                .help("Select for multi-session finalize (Space)")
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(row.date)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(isActive ? EF.text : EF.subtle)
-                    Badge(text: row.status.rawValue, color: row.status.color)
+                        .font(isActive ? Typo.headline : Typo.body)
+                        .foregroundStyle(isActive ? Palette.label : Palette.secondary)
+                    Spacer(minLength: 0)
+                    DecisionBadge(text: row.status.rawValue, color: row.status.color, compact: true)
                 }
-                HStack(spacing: 7) {
-                    Text("\(row.total - row.keep - row.reject)/\(row.total)")
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(EF.bg3)
+
+                HStack(spacing: 8) {
+                    Label("\(undecided)/\(row.total)", systemImage: "circle.dashed")
+                        .labelStyle(.titleOnly)
+                        .font(Typo.number)
+                        .foregroundStyle(Palette.tertiary)
                         .help("undecided / total")
                     if row.keep > 0 {
-                        Text("✓\(row.keep)").font(.system(size: 9, design: .monospaced)).foregroundStyle(EF.green)
+                        Text("\(row.keep)")
+                            .font(Typo.number).foregroundStyle(Palette.keep)
+                            .help("kept")
                     }
                     if row.reject > 0 {
-                        Text("✗\(row.reject)").font(.system(size: 9, design: .monospaced)).foregroundStyle(EF.red)
+                        Text("\(row.reject)")
+                            .font(Typo.number).foregroundStyle(Palette.reject)
+                            .help("rejected")
                     }
                     if row.cropped > 0 {
-                        Text("▣\(row.cropped)").font(.system(size: 9, design: .monospaced)).foregroundStyle(EF.yellow)
-                            .help("cropped photos")
+                        Image(systemName: "crop")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Palette.crop)
+                            .help("\(row.cropped) cropped")
                     }
+                    Spacer(minLength: 0)
                 }
-                ProgressBar(value: row.progress)
-            }
 
-            Spacer(minLength: 0)
+                ProgressLine(value: row.progress,
+                             tint: row.status == .complete ? Palette.keep : Palette.accent)
+                    .opacity(row.status == .unstarted ? 0.4 : 1)
+            }
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 3)
-                .fill(isCursor ? EF.bg1 : Color.clear)
+            RoundedRectangle(cornerRadius: Metric.radiusButton, style: .continuous)
+                .fill(fill)
         )
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(isActive ? EF.blue : Color.clear)
-                .frame(width: 2)
-        }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { app.open(date: row.date) }
+        .onHover { hover.value = $0 }
         .onTapGesture { app.cursorDate = row.date }
-    }
-}
-
-struct ProgressBar: View {
-    let value: Double
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(EF.bg3.opacity(0.45))
-                Capsule().fill(EF.green.opacity(0.75))
-                    .frame(width: max(0, min(1, value)) * geo.size.width)
+        .onTapGesture(count: 2) { app.open(date: row.date) }
+        .contextMenu {
+            Button("Open") { app.open(date: row.date) }
+            Button("Finalize…") { app.finalizeStats = (try? [Finalize.summary(cfg: app.cfg, date: row.date)]) ?? []
+                                    app.modal = .finalize(date: row.date) }
+            Divider()
+            Button(isSelected ? "Deselect" : "Select for Multi-Finalize") {
+                app.toggleSelection(row.date)
             }
         }
-        .frame(height: 3)
+    }
+
+    private var fill: Color {
+        if isActive { return Palette.accent.opacity(0.16) }
+        if isCursor { return Palette.quaternary.opacity(0.28) }
+        if hover.value { return Palette.quaternary.opacity(0.16) }
+        return .clear
     }
 }

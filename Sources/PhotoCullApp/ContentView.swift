@@ -1,192 +1,201 @@
 import SwiftUI
+import AppKit
 import PhotoCullCore
 
+/// The app window: a native sidebar + content + inspector arrangement
+/// (NavigationSplitView), a unified toolbar for global actions, and a status bar.
 struct ContentView: View {
     @EnvironmentObject var app: AppState
-    @StateObject private var leftWidth = ViewState<CGFloat>(268)
 
     var body: some View {
-        ZStack {
-            EF.bg.ignoresSafeArea()
-
+        NavigationSplitView {
+            SessionsPane()
+                .navigationSplitViewColumnWidth(min: Metric.sidebarMin,
+                                                ideal: Metric.sidebarIdeal,
+                                                max: 340)
+        } detail: {
             VStack(spacing: 0) {
-                HeaderBar()
-                HStack(spacing: 0) {
-                    VStack(spacing: 0) {
-                        SessionsPane()
-                            .frame(maxHeight: .infinity)
-                        InfoPane()
-                            .frame(height: 208)
-                    }
-                    .frame(width: leftWidth.value)
-
-                    ResizeHandle(width: $leftWidth.value)
-
-                    VStack(spacing: 0) {
-                        ImagePane()
-                            .frame(maxHeight: .infinity)
-                        FilmstripPane()
-                            .frame(height: 116)
-                    }
-                }
-                .padding(6)
-
-                FooterBar()
+                ImagePane()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Divider().overlay(Palette.separator)
+                FilmstripPane()
+                    .frame(height: Metric.filmstripHeight)
+                Divider().overlay(Palette.separator)
+                StatusBar()
             }
-
-            if app.commandMode { CommandBar() }
-
-            if let toast = app.toast {
-                VStack {
-                    Spacer()
-                    Text(toast)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(EF.bg)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Capsule().fill(EF.aqua))
-                        .padding(.bottom, 44)
-                }
-                .transition(.opacity)
-                .allowsHitTesting(false)
+            .background(Palette.window)
+            .inspector(isPresented: $app.showInspector) {
+                InfoPane()
+                    .inspectorColumnWidth(min: 220, ideal: Metric.inspectorWidth, max: 380)
             }
-
-            if app.modal == .help { HelpOverlay() }
-            if app.modal == .ingest { IngestSheet() }
-            if app.showingFinalizeSheet { FinalizeSheet() }
         }
-        .background(EF.bg)
+        .navigationTitle(app.activeDate ?? "PhotoCull")
+        .background(Palette.window)
+        .toolbar { toolbarContent }
+        .overlay(alignment: .bottom) { ToastView() }
+        .sheet(item: $app.modal) { modal in
+            switch modal {
+            case .help:      HelpSheet()
+            case .ingest:    IngestSheet()
+            case .settings:  HelpSheet()
+            case .finalize, .globalFinalize: FinalizeSheet()
+            }
+        }
         .onAppear {
             KeyMonitor.shared.handler = { [weak app] key in
                 guard let app else { return false }
                 return app.handle(key)
             }
             KeyMonitor.shared.start()
+            // `--crop` opens crop mode so the overlay can be inspected in a snapshot.
+            if CommandLine.arguments.contains("--crop") {
+                app.enterCropMode()
+                app.cropRect = CropRect(x: 0.14, y: 0.08, w: 0.62, h: 0.78)
+            }
         }
     }
-}
 
-// MARK: - Header
-
-struct HeaderBar: View {
-    @EnvironmentObject var app: AppState
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text("photocull")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundStyle(EF.text)
-
-            Text("·").foregroundStyle(EF.bg3)
-
-            if let date = app.activeDate {
-                Text(date)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(EF.blue)
-                Text("·").foregroundStyle(EF.bg3)
-                Text("[\(app.pairs.isEmpty ? 0 : app.index + 1)/\(app.pairs.count)]")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(EF.subtle)
-                if let stem = app.currentStem {
-                    Text("\(stem).JPG")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(EF.text)
-                        .lineLimit(1)
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        // Counter + current file + state, centred in the unified toolbar.
+        ToolbarItem(placement: .principal) {
+            HStack(spacing: 8) {
+                if app.activeDate != nil {
+                    Text("[\(app.pairs.isEmpty ? 0 : app.index + 1)/\(app.pairs.count)]")
+                        .font(Typo.number)
+                        .foregroundStyle(Palette.secondary)
+                    if let stem = app.currentStem {
+                        Text("\(stem).JPG")
+                            .font(Typo.mono)
+                            .foregroundStyle(Palette.label)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: 220)
+                    }
+                    DecisionBadge(text: app.currentDecision.label,
+                                  color: app.currentDecision.color,
+                                  filled: app.currentDecision != .undecided)
+                    if app.hasCrop { DecisionBadge(text: "CROP", color: Palette.crop) }
+                    if app.currentPair?.hasRAW == true {
+                        DecisionBadge(text: "+\(app.currentPair?.rawExt ?? "RAW")", color: Palette.raw)
+                    }
+                } else {
+                    Text("No session selected")
+                        .font(Typo.body)
+                        .foregroundStyle(Palette.tertiary)
                 }
-                Badge(text: app.currentDecision.label, color: app.currentDecision.color, filled: true)
-                if app.hasCrop { Badge(text: "CROP", color: EF.yellow) }
-                if app.currentPair?.hasRAW == true {
-                    Badge(text: "+\(app.currentPair?.rawExt ?? "RAW")", color: EF.aqua)
-                }
-            } else {
-                Text("no session").font(.system(size: 11, design: .monospaced)).foregroundStyle(EF.subtle)
             }
+        }
 
-            Spacer(minLength: 12)
-
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 app.beginIngest()
             } label: {
                 Label("Ingest", systemImage: "square.and.arrow.down")
-                    .font(.system(size: 11, weight: .semibold))
-                    .labelStyle(.titleAndIcon)
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(EF.aqua)
             .help("Ingest photos from an SD card (⌘I)")
 
             Button {
                 app.beginGlobalFinalize()
             } label: {
                 Label("Finalize", systemImage: "checkmark.circle")
-                    .font(.system(size: 11, weight: .semibold))
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(EF.green)
             .disabled(app.visibleSessions.isEmpty)
-            .help("Finalize sessions (⌘F)")
+            .help("Finalize sessions (⌘⇧F)")
+
+            Button {
+                app.toggleInspector()
+            } label: {
+                Label("Info", systemImage: "sidebar.right")
+            }
+            .help("Show or hide the info inspector (⌘I)")
 
             Button {
                 app.modal = .help
             } label: {
-                Image(systemName: "questionmark.circle")
-                    .font(.system(size: 12))
+                Label("Help", systemImage: "questionmark.circle")
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(EF.subtle)
             .help("Keyboard shortcuts (?)")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(EF.bg1)
-        .overlay(alignment: .bottom) { Divider().overlay(EF.bg3) }
     }
 }
 
-// MARK: - Footer
+// MARK: - Status bar
 
-struct FooterBar: View {
+/// Thin bottom bar: key hints on the left, inbox location on the right.
+struct StatusBar: View {
     @EnvironmentObject var app: AppState
 
     private var hints: [(String, String)] {
         if app.cropMode {
             return [("←↑↓→", "move"), ("⇧←↑↓→", "resize"), ("a", "aspect"),
-                    ("r", "reset"), ("p", "preview"), ("⏎", "apply"), ("Esc", "cancel")]
+                    ("r", "reset"), ("⏎", "apply"), ("esc", "cancel")]
         }
         return [("z", "keep"), ("x", "reject"), ("c", "crop"), ("j/k", "next/prev"),
                 ("J/K", "undecided"), ("o", "preview"), ("1-4", "pane"),
-                ("Tab", "filter"), (":f", "finalize"), (":F", "finalize all"),
-                (":i", "ingest"), ("?", "help")]
+                ("tab", "filter"), (":f", "finalize"), ("?", "help")]
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             ForEach(hints, id: \.0) { key, label in
                 HStack(spacing: 3) {
                     Keycap(key: key)
                     Text(label)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(EF.bg3)
+                        .font(Typo.caption)
+                        .foregroundStyle(Palette.secondary)
                 }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
             if app.imageLoader.isLoading {
-                ProgressView().controlSize(.mini).scaleEffect(0.6)
+                ProgressView().controlSize(.mini).scaleEffect(0.55)
             }
             Text(app.cfg.paths.inbox.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(EF.bg3)
+                .font(Typo.monoSmall)
+                .foregroundStyle(Palette.quaternary)
                 .lineLimit(1)
                 .truncationMode(.head)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(EF.bg1)
-        .overlay(alignment: .top) { Divider().overlay(EF.bg3) }
+        .padding(.horizontal, 12)
+        .frame(height: 26)
+        .background(Surface.chrome)
+    }
+}
+
+// MARK: - Toast
+
+/// Lightweight confirmation that slides in and fades away.
+struct ToastView: View {
+    @EnvironmentObject var app: AppState
+
+    var body: some View {
+        if let toast = app.toast {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.keep)
+                Text(toast)
+                    .font(Typo.callout)
+                    .foregroundStyle(Palette.label)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule(style: .continuous).fill(Surface.floating)
+            )
+            .overlay(Capsule(style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+            .shadowMedium()
+            .padding(.bottom, 38)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .allowsHitTesting(false)
+            .animation(Motion.normal, value: toast)
+        }
     }
 }
 
 // MARK: - Command bar
 
+/// Vim-style `:` command entry. Floats over the content, dismissed with Esc.
 struct CommandBar: View {
     @EnvironmentObject var app: AppState
 
@@ -194,49 +203,29 @@ struct CommandBar: View {
         VStack {
             Spacer()
             HStack(spacing: 6) {
-                Text(":").foregroundStyle(EF.green)
-                Text(app.commandBuffer)
-                    .foregroundStyle(EF.text)
-                Rectangle().fill(EF.aqua).frame(width: 7, height: 13)
-                    .opacity(0.85)
-                Spacer()
-                Text("⏎ run · Esc cancel")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(EF.bg3)
+                Text(":").foregroundStyle(Palette.accent)
+                Text(app.commandBuffer).foregroundStyle(Palette.label)
+                Rectangle()
+                    .fill(Palette.accent)
+                    .frame(width: 1.5, height: 14)
+                    .opacity(0.9)
+                Spacer(minLength: 40)
+                Text("⏎ run · esc cancel")
+                    .font(Typo.caption)
+                    .foregroundStyle(Palette.tertiary)
             }
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .font(Typo.body)
             .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 5).fill(EF.bg2))
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(EF.green.opacity(0.5), lineWidth: 1))
-            .padding(.horizontal, 60)
+            .frame(height: 32)
+            .frame(maxWidth: 460)
+            .background(RoundedRectangle(cornerRadius: Metric.radiusCard, style: .continuous)
+                .fill(Surface.floating))
+            .overlay(RoundedRectangle(cornerRadius: Metric.radiusCard, style: .continuous)
+                .strokeBorder(Palette.separator, lineWidth: 0.5))
+            .shadowMedium()
             .padding(.bottom, 48)
         }
         .allowsHitTesting(false)
-    }
-}
-
-// MARK: - Resize handle
-
-struct ResizeHandle: View {
-    @Binding var width: CGFloat
-    @StateObject private var drag = ViewState<CGFloat?>(nil)
-
-    var body: some View {
-        Rectangle()
-            .fill(EF.bg3.opacity(0.5))
-            .frame(width: 4)
-            .contentShape(Rectangle().inset(by: -3))
-            .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        if drag.value == nil { drag.value = width }
-                        width = min(max(180, (drag.value ?? width) + value.translation.width), 460)
-                    }
-                    .onEnded { _ in drag.value = nil }
-            )
+        .transition(.opacity)
     }
 }

@@ -75,17 +75,27 @@ func suitePairRepair() throws {
     try touch(d3.appendingPathComponent("AAA1.JPG"), bytes: 10)
     try touch(d3.appendingPathComponent("AAA1_2.RAF"), bytes: 20)
     _ = try PairRepair.apply(cfg: cfg, includeArchive: false, logDirectory: logDir)
-    let logs = (try? fm.contentsOfDirectory(atPath: logDir.path)) ?? []
-    checkEqual(logs.count, 2, "each apply wrote an audit log")
-    if let log = logs.first,
-       let data = try? Data(contentsOf: logDir.appendingPathComponent(log)),
-       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+    let logs = ((try? fm.contentsOfDirectory(atPath: logDir.path)) ?? []).sorted()
+    checkEqual(logs.count, 2, "each apply wrote its own audit log")
+
+    // Read every log and pick the one describing the AAA1 rename (log names sort
+    // lexically, not chronologically, when two applies land in the same second).
+    var found: [String: Any]?
+    for log in logs {
+        guard let data = try? Data(contentsOf: logDir.appendingPathComponent(log)),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+        let entries = obj["renames"] as? [[String: String]] ?? []
+        if entries.contains(where: { ($0["to"] as NSString?)?.lastPathComponent == "AAA1.RAF" }) {
+            found = obj
+        }
+    }
+    if let obj = found {
         checkEqual(obj["renamed_count"] as? Int, 1, "audit log records the rename count")
         let entries = obj["renames"] as? [[String: String]] ?? []
         checkEqual(entries.first?["to"].map { ($0 as NSString).lastPathComponent }, "AAA1.RAF",
                    "audit log records the destination path")
     } else {
-        check(false, "audit log is readable JSON")
+        check(false, "an audit log describing the AAA1 rename exists and is readable JSON")
     }
 
     // ---- suffix parsing ----------------------------------------------------

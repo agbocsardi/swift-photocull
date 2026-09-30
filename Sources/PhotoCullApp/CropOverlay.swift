@@ -33,11 +33,11 @@ struct CropOverlay: View {
                 p.addRect(imageRect)
                 p.addRect(r)
             }
-            .fill(EF.bg.opacity(0.62), style: FillStyle(eoFill: true))
+            .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
             .allowsHitTesting(false)
 
             Rectangle()
-                .stroke(EF.yellow, lineWidth: 1.5)
+                .stroke(Palette.crop, lineWidth: 1.5)
                 .frame(width: r.width, height: r.height)
                 .offset(x: r.minX, y: r.minY)
                 .allowsHitTesting(false)
@@ -46,9 +46,9 @@ struct CropOverlay: View {
 
             ForEach(handlePoints(r), id: \.0) { _, point in
                 Rectangle()
-                    .fill(EF.yellow)
+                    .fill(Palette.crop)
                     .frame(width: 9, height: 9)
-                    .overlay(Rectangle().stroke(EF.bg, lineWidth: 1))
+                    .overlay(Rectangle().stroke(Palette.window, lineWidth: 1))
                     .offset(x: point.x - 4.5, y: point.y - 4.5)
                     .allowsHitTesting(false)
             }
@@ -75,7 +75,7 @@ struct CropOverlay: View {
                 p.addLine(to: CGPoint(x: r.maxX, y: r.minY + r.height * f))
             }
         }
-        .stroke(EF.yellow.opacity(0.35), lineWidth: 0.5)
+        .stroke(Palette.crop.opacity(0.35), lineWidth: 0.5)
         .allowsHitTesting(false)
     }
 

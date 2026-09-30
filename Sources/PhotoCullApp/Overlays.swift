@@ -1,110 +1,146 @@
 import SwiftUI
 import PhotoCullCore
 
+// Modal presentation, native style: real sheets with a title, grouped content
+// and a button bar using the standard cancel / default actions.
+
+/// Shared sheet chrome: title, scrollable body, divider, button bar.
+struct SheetShell<Content: View, Buttons: View>: View {
+    let title: String
+    var subtitle: String?
+    var width: CGFloat = 560
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var buttons: () -> Buttons
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(Typo.title3)
+                    .foregroundStyle(Palette.label)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(Typo.callout)
+                        .foregroundStyle(Palette.secondary)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+            .padding(.bottom, 12)
+
+            Divider().overlay(Palette.separator)
+
+            ScrollView {
+                content()
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 460)
+
+            Divider().overlay(Palette.separator)
+
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+                buttons()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .frame(width: width)
+        .background(Palette.window)
+    }
+}
+
+/// A labelled group inside a sheet.
+struct SheetGroup<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.4)
+                .foregroundStyle(Palette.tertiary)
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Metric.radiusCard, style: .continuous)
+                .fill(Palette.quaternary.opacity(0.16))
+        )
+        .hairlineBorder()
+    }
+}
+
 // MARK: - Help
 
-struct HelpOverlay: View {
+/// Shortcut cheat sheet, grouped by category, in the macOS idiom.
+struct HelpSheet: View {
     @EnvironmentObject var app: AppState
 
     private let actions: [(String, String)] = [
-        ("z", "mark keep (toggle)"),
-        ("x", "mark reject (toggle)"),
-        ("c", "crop mode"),
-        ("o", "open in Preview"),
-        ("f", "reveal in Finder"),
-        (":f", "finalize current session"),
-        (":F", "finalize selected sessions"),
-        (":i", "ingest photos (SD card)"),
-        (":c", "crop current photo"),
-        ("Space", "toggle session selection"),
+        ("z", "Mark keep (press again to undo)"),
+        ("x", "Mark reject (press again to undo)"),
+        ("c", "Crop the current photo"),
+        ("o", "Open in Preview"),
+        ("f", "Reveal in Finder"),
+        (":f", "Finalize the current session"),
+        (":F", "Finalize selected sessions"),
+        (":i", "Ingest photos from an SD card"),
+        (":R", "Check and repair RAW pairing"),
     ]
-    private let nav: [(String, String)] = [
-        ("j / k", "next / previous photo"),
-        ("J / K", "next / previous undecided"),
-        ("h / l", "cycle session when pane 1 focused"),
-        ("1–4", "focus pane"),
-        ("Enter", "open session / apply crop"),
-        ("Tab", "cycle session filter"),
-        ("+ / -", "zoom in / out"),
-        ("0", "fit to window"),
-        ("Esc", "cancel crop / close overlay / clear selection"),
+    private let navigation: [(String, String)] = [
+        ("j / k", "Next / previous photo"),
+        ("J / K", "Next / previous undecided photo"),
+        ("1 – 4", "Focus sidebar, photo, info, filmstrip"),
+        ("Enter", "Open the selected session"),
+        ("Tab", "Cycle the session filter"),
+        ("Space", "Select a session for multi-finalize"),
+        ("+ / −", "Zoom in / out"),
+        ("0", "Fit to window"),
+        ("Esc", "Cancel a crop, close, or clear the selection"),
     ]
     private let crop: [(String, String)] = [
-        ("← ↑ ↓ →", "move crop region"),
-        ("⇧ + arrows", "resize crop region"),
-        ("drag handles", "resize crop with the mouse"),
-        ("drag inside", "move crop with the mouse"),
-        ("a", "cycle aspect ratio"),
-        ("r", "reset crop to full frame"),
-        ("p", "toggle cropped preview"),
-        ("Enter", "apply crop"),
-        ("Esc", "cancel crop"),
+        ("← ↑ ↓ →", "Move the crop region"),
+        ("⇧ + arrows", "Resize the crop region"),
+        ("drag", "Move or resize with the mouse"),
+        ("a", "Cycle the aspect ratio"),
+        ("r", "Reset the crop to the full frame"),
+        ("p", "Toggle the cropped preview"),
+        ("Enter", "Apply the crop"),
     ]
 
     var body: some View {
-        OverlayShell(title: "Keyboard shortcuts", onClose: { app.modal = nil }) {
-            HStack(alignment: .top, spacing: 28) {
+        SheetShell(title: "Keyboard Shortcuts",
+                   subtitle: "Crop is non-destructive: originals are never modified.",
+                   width: 720) {
+            HStack(alignment: .top, spacing: 16) {
                 column("Actions", actions)
-                column("Navigation", nav)
-                column("Crop mode", crop)
+                column("Navigation", navigation)
+                column("Crop", crop)
             }
+        } buttons: {
+            Button("Done") { app.modal = nil }
+                .keyboardShortcut(.defaultAction)
         }
     }
 
     private func column(_ title: String, _ rows: [(String, String)]) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(EF.aqua)
-                .padding(.bottom, 2)
-            ForEach(rows, id: \.0) { key, label in
-                HStack(spacing: 7) {
-                    Keycap(key: key)
-                    Text(label)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(EF.text)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
+        SheetGroup(title: title) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(rows, id: \.0) { key, label in
+                    HStack(alignment: .top, spacing: 8) {
+                        Keycap(key: key)
+                            .frame(width: 62, alignment: .leading)
+                        Text(label)
+                            .font(Typo.callout)
+                            .foregroundStyle(Palette.label)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
-            Spacer(minLength: 0)
-        }
-        .frame(minWidth: 210, alignment: .leading)
-    }
-}
-
-// MARK: - Overlay shell
-
-struct OverlayShell<Content: View>: View {
-    let title: String
-    var width: CGFloat = 720
-    var onClose: () -> Void
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.45)
-                .ignoresSafeArea()
-                .onTapGesture { onClose() }
-
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text(title)
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundStyle(EF.text)
-                    Spacer()
-                    Button("Close") { onClose() }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(EF.subtle)
-                }
-                content()
-            }
-            .padding(18)
-            .frame(width: width, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 8).fill(EF.bg2))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(EF.bg3, lineWidth: 1))
-            .shadow(color: .black.opacity(0.5), radius: 24, y: 8)
         }
     }
 }
@@ -121,72 +157,70 @@ struct FinalizeSheet: View {
     }
 
     var body: some View {
-        OverlayShell(title: app.finalizeStats.count == 1
+        let t = totals
+        SheetShell(title: app.finalizeStats.count == 1
                      ? "Finalize \(app.finalizeStats.first?.date ?? "")"
-                     : "Finalize \(app.finalizeStats.count) sessions",
-                     width: 660,
-                     onClose: { app.modal = nil }) {
-            VStack(alignment: .leading, spacing: 12) {
-                tableRow(header: true, cells: ["Session", "Keep", "Reject", "Undecided", "Total"])
-                Divider().overlay(EF.bg3)
-                ForEach(app.finalizeStats, id: \.date) { s in
-                    tableRow(header: false, cells: ["\(s.date)", "\(s.keep)", "\(s.reject)",
-                                                    "\(s.undecided)", "\(s.total)"])
-                }
-                Divider().overlay(EF.bg3)
-                let t = totals
-                tableRow(header: false, bold: true,
-                         cells: ["Total", "\(t.keep)", "\(t.reject)", "\(t.undecided)", "\(t.photos)"])
-
-                if totals.undecided > 0 {
-                    Text("Undecided photos are treated as KEEP.")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(EF.yellow)
+                     : "Finalize \(app.finalizeStats.count) Sessions",
+                   subtitle: "Rejects move to the Trash. Keepers move to the archive.",
+                   width: 640) {
+            VStack(alignment: .leading, spacing: 16) {
+                SheetGroup(title: "Summary") {
+                    VStack(spacing: 0) {
+                        tableRow(bold: true, cells: ["Session", "Keep", "Reject", "Undecided", "Total"])
+                        Divider().overlay(Palette.separator).padding(.vertical, 6)
+                        ForEach(app.finalizeStats, id: \.date) { s in
+                            tableRow(cells: [s.date, "\(s.keep)", "\(s.reject)",
+                                             "\(s.undecided)", "\(s.total)"])
+                        }
+                        Divider().overlay(Palette.separator).padding(.vertical, 6)
+                        tableRow(bold: true, cells: ["Total", "\(t.keep)", "\(t.reject)",
+                                                     "\(t.undecided)", "\(t.photos)"])
+                    }
                 }
 
-                Picker("Kept JPGs copied to \(app.cfg.paths.dump.replacingOccurrences(of: NSHomeDirectory(), with: "~"))", selection: $app.cropExportMode) {
-                    Text("with crop applied").tag(CropExportMode.applyCrop)
-                    Text("originals").tag(CropExportMode.original)
+                if t.undecided > 0 {
+                    Label("\(t.undecided) undecided photo\(t.undecided == 1 ? "" : "s") will be treated as keep.",
+                          systemImage: "exclamationmark.triangle")
+                        .font(Typo.callout)
+                        .foregroundStyle(Palette.warning)
                 }
-                .pickerStyle(.radioGroup)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(EF.text)
 
-                Text("Rejects (JPG + paired RAW) move to the Trash.\nKeepers move to archive/<date>/. Originals are never modified.")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(EF.bg3)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack {
-                    Spacer()
-                    Button("Cancel (n)") { app.modal = nil }
-                        .keyboardShortcut(.cancelAction)
-                    Button("Confirm (y)") { app.confirmFinalize() }
-                        .keyboardShortcut(.defaultAction)
+                SheetGroup(title: "Copies to \(app.cfg.paths.dump.replacingOccurrences(of: NSHomeDirectory(), with: "~"))") {
+                    Picker("", selection: $app.cropExportMode) {
+                        Text("Keep JPGs with the crop applied").tag(CropExportMode.applyCrop)
+                        Text("Keep the original JPGs").tag(CropExportMode.original)
+                    }
+                    .pickerStyle(.radioGroup)
+                    .labelsHidden()
+                    .font(Typo.callout)
                 }
             }
+        } buttons: {
+            Button("Cancel") { app.modal = nil }
+                .keyboardShortcut(.cancelAction)
+            Button("Finalize") { app.confirmFinalize() }
+                .keyboardShortcut(.defaultAction)
         }
     }
 
-    private func tableRow(header: Bool, bold: Bool = false, cells: [String]) -> some View {
+    private func tableRow(bold: Bool = false, cells: [String]) -> some View {
         HStack(spacing: 0) {
             ForEach(Array(cells.enumerated()), id: \.offset) { i, cell in
                 Text(cell)
-                    .font(.system(size: 11, weight: header || bold ? .bold : .regular, design: .monospaced))
-                    .foregroundStyle(color(for: i, header: header))
-                    .frame(width: i == 0 ? 170 : 88, alignment: i == 0 ? .leading : .trailing)
+                    .font(bold ? Typo.numberBold : Typo.number)
+                    .foregroundStyle(color(for: i))
+                    .frame(width: i == 0 ? 170 : 78, alignment: i == 0 ? .leading : .trailing)
             }
             Spacer(minLength: 0)
         }
     }
 
-    private func color(for column: Int, header: Bool) -> Color {
-        if header { return EF.bg3 }
+    private func color(for column: Int) -> Color {
         switch column {
-        case 1: return EF.green
-        case 2: return EF.red
-        case 3: return EF.subtle
-        default: return EF.text
+        case 1: return Palette.keep
+        case 2: return Palette.reject
+        case 3: return Palette.secondary
+        default: return Palette.label
         }
     }
 }
@@ -198,83 +232,85 @@ struct IngestSheet: View {
     @FocusState private var pathFocused: Bool
 
     var body: some View {
-        OverlayShell(title: "Ingest photos", width: 640, onClose: {
-            if !app.ingestProgress.running { app.modal = nil }
-        }) {
-            VStack(alignment: .leading, spacing: 12) {
-                if app.detectedCards.isEmpty {
-                    Text("No SD card detected under /Volumes/ with a DCIM folder.")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(EF.yellow)
-                } else {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Detected card\(app.detectedCards.count > 1 ? "s" : "")")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(EF.aqua)
-                        ForEach(app.detectedCards, id: \.path) { url in
-                            Button {
-                                app.ingestSource = url.path
-                            } label: {
-                                Text(url.path)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(app.ingestSource == url.path ? EF.blue : EF.text)
+        SheetShell(title: "Ingest Photos",
+                   subtitle: "Photos are copied into the inbox, grouped by capture date. The card is never modified.",
+                   width: 600) {
+            VStack(alignment: .leading, spacing: 16) {
+                SheetGroup(title: "Source") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if app.detectedCards.isEmpty {
+                            Label("No SD card detected under /Volumes/ with a DCIM folder.",
+                                  systemImage: "sdcard")
+                                .font(Typo.callout)
+                                .foregroundStyle(Palette.warning)
+                        } else {
+                            ForEach(app.detectedCards, id: \.path) { url in
+                                Button {
+                                    app.ingestSource = url.path
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: app.ingestSource == url.path
+                                              ? "largecircle.fill.circle" : "circle")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(app.ingestSource == url.path
+                                                             ? Palette.accent : Palette.quaternary)
+                                        Text(url.path)
+                                            .font(Typo.mono)
+                                            .foregroundStyle(Palette.label)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.borderless)
+                        }
+
+                        HStack(spacing: 8) {
+                            TextField("/Volumes/SDCARD/DCIM", text: $app.ingestSource)
+                                .textFieldStyle(.roundedBorder)
+                                .font(Typo.mono)
+                                .focused($pathFocused)
+                                .disabled(app.ingestProgress.running)
+                            Button("Choose…") { chooseFolder() }
+                                .disabled(app.ingestProgress.running)
                         }
                     }
-                }
-
-                HStack(spacing: 8) {
-                    Text("Source")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(EF.bg3)
-                    TextField("/Volumes/SDCARD/DCIM", text: $app.ingestSource)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11, design: .monospaced))
-                        .focused($pathFocused)
-                        .disabled(app.ingestProgress.running)
-                    Button("Choose…") { chooseFolder() }
-                        .disabled(app.ingestProgress.running)
                 }
 
                 if app.ingestProgress.running || app.ingestProgress.done {
-                    VStack(alignment: .leading, spacing: 5) {
-                        ProgressView(value: Double(app.ingestProgress.copied),
-                                     total: Double(max(1, app.ingestProgress.total)))
-                            .tint(EF.green)
-                        HStack {
-                            Text("\(app.ingestProgress.copied)/\(app.ingestProgress.total) copied")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(EF.subtle)
-                            Spacer()
-                            Text(app.ingestProgress.current)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(EF.bg3)
-                                .lineLimit(1)
-                        }
-                        if let err = app.ingestProgress.error {
-                            Text(err)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(EF.red)
-                                .fixedSize(horizontal: false, vertical: true)
+                    SheetGroup(title: "Progress") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ProgressView(value: Double(app.ingestProgress.copied),
+                                         total: Double(max(1, app.ingestProgress.total)))
+                                .tint(Palette.keep)
+                            HStack {
+                                Text("\(app.ingestProgress.copied) of \(app.ingestProgress.total) copied")
+                                    .font(Typo.number)
+                                    .foregroundStyle(Palette.secondary)
+                                Spacer(minLength: 8)
+                                Text(app.ingestProgress.current)
+                                    .font(Typo.monoSmall)
+                                    .foregroundStyle(Palette.tertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            if let err = app.ingestProgress.error {
+                                Label(err, systemImage: "exclamationmark.triangle")
+                                    .font(Typo.callout)
+                                    .foregroundStyle(Palette.reject)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
                 }
-
-                Text("Photos are copied (never moved) into \(app.cfg.paths.inbox.replacingOccurrences(of: NSHomeDirectory(), with: "~"))/<capture-date>/ . The card stays untouched until you erase it.")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(EF.bg3)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack {
-                    Spacer()
-                    Button("Close") { app.modal = nil }
-                        .disabled(app.ingestProgress.running)
-                    Button("Start Ingest") { app.startIngest() }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(app.ingestProgress.running || app.ingestSource.isEmpty)
-                }
             }
+        } buttons: {
+            Button("Close") { app.modal = nil }
+                .keyboardShortcut(.cancelAction)
+                .disabled(app.ingestProgress.running)
+            Button("Start Ingest") { app.startIngest() }
+                .keyboardShortcut(.defaultAction)
+                .disabled(app.ingestProgress.running || app.ingestSource.isEmpty)
         }
         .onAppear { pathFocused = false }
     }
@@ -284,7 +320,7 @@ struct IngestSheet: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Choose source"
+        panel.prompt = "Choose Source"
         if panel.runModal() == .OK, let url = panel.url { app.ingestSource = url.path }
     }
 }

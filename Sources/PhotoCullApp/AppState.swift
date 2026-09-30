@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 import PhotoCullCore
 
 enum Pane: Int, CaseIterable {
@@ -25,12 +26,22 @@ enum SessionFilter: Int, CaseIterable {
     }
 }
 
-enum Modal: Equatable {
+enum Modal: Identifiable, Equatable {
     case help
     case finalize(date: String)
     case globalFinalize
     case ingest
     case settings
+
+    var id: String {
+        switch self {
+        case .help: return "help"
+        case .finalize(let date): return "finalize-\(date)"
+        case .globalFinalize: return "globalFinalize"
+        case .ingest: return "ingest"
+        case .settings: return "settings"
+        }
+    }
 }
 
 enum NavDir { case next, prev }
@@ -80,6 +91,7 @@ final class AppState: ObservableObject {
     @Published var filter: SessionFilter = .all
     @Published var selectedDates: Set<String> = []
     @Published var modal: Modal?
+    @Published var showInspector = true
     @Published var commandMode = false
     @Published var commandBuffer = ""
     @Published var toast: String?
@@ -110,8 +122,15 @@ final class AppState: ObservableObject {
     let thumbs = ThumbnailStore()
 
     private var toastTask: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
+        // ImageLoader owns its own @Published state, so views observing AppState
+        // would never see a decoded photo arrive. Re-emit its changes.
+        imageLoader.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
         detectedCards = Ingest.detectSDCards()
         if let first = detectedCards.first { ingestSource = first.path }
         reloadLibrary()
@@ -386,6 +405,10 @@ final class AppState: ObservableObject {
 
     func clearSelection() { selectedDates.removeAll() }
 
+    func toggleInspector() {
+        withAnimation(Motion.normal) { showInspector.toggle() }
+    }
+
     func cycleFilter() {
         filter = SessionFilter(rawValue: (filter.rawValue + 1) % SessionFilter.allCases.count) ?? .all
         if let cursor = cursorDate, !visibleSessions.contains(where: { $0.date == cursor }) {
@@ -580,6 +603,7 @@ final class AppState: ObservableObject {
         case "f": beginFinalizeCurrent()
         case "F": beginGlobalFinalize()
         case "i": beginIngest()
+        case "I": toggleInspector()
         case "c": enterCropMode()
         case "R": repairPairingInteractive()
         case "q": NSApp.terminate(nil)
