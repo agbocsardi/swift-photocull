@@ -245,10 +245,11 @@ struct PaneBadge: View {
             .foregroundStyle(focused ? Color.white : Palette.secondary)
             .frame(width: 16, height: 16)
             .background(
-                Circle().fill(focused ? Palette.accent : Palette.quaternary.opacity(0.5))
+                Circle().fill(focused ? Palette.accent : Palette.secondary.opacity(0.18))
             )
             .overlay(
-                Circle().strokeBorder(Palette.separator, lineWidth: focused ? 0 : 0.5)
+                Circle().strokeBorder(focused ? Color.clear : Palette.secondary.opacity(0.45),
+                                      lineWidth: 1)
             )
             .animation(Motion.fast, value: focused)
     }
@@ -377,13 +378,13 @@ struct SectionHeader: View {
             Text(text.uppercased())
                 .font(Typo.sectionHeader)
                 .tracking(0.4)
-                .foregroundStyle(focused ? Palette.label : Palette.tertiary)
+                .foregroundStyle(focused ? Palette.label : Palette.secondary)
             Spacer(minLength: 0)
             if let trailing { trailing }
         }
         .padding(.horizontal, Metric.paneInset)
         .padding(.top, Metric.paneInset)
-        .padding(.bottom, 6)
+        .padding(.bottom, Metric.paneInset - 4)
     }
 }
 

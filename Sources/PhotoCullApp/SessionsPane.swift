@@ -78,9 +78,12 @@ private struct SessionRowView: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            // Progressive disclosure: the selection control only appears when the
+            // row is hovered, selected, or the sidebar has keyboard focus.
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                 .font(.system(size: 12))
-                .foregroundStyle(isSelected ? Palette.accent : Palette.quaternary)
+                .foregroundStyle(isSelected ? Palette.accent : Palette.secondary.opacity(0.6))
+                .opacity(showsSelectionControl ? 1 : 0)
                 .onTapGesture { withAnimation(Motion.fast) { app.toggleSelection(row.date) } }
                 .help("Select for multi-session finalize (Space)")
 
@@ -94,10 +97,9 @@ private struct SessionRowView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Label("\(undecided)/\(row.total)", systemImage: "circle.dashed")
-                        .labelStyle(.titleOnly)
+                    Text("\(undecided)/\(row.total)")
                         .font(Typo.number)
-                        .foregroundStyle(Palette.tertiary)
+                        .foregroundStyle(Palette.secondary)
                         .help("undecided / total")
                     if row.keep > 0 {
                         Text("\(row.keep)")
@@ -143,6 +145,10 @@ private struct SessionRowView: View {
                 app.toggleSelection(row.date)
             }
         }
+    }
+
+    private var showsSelectionControl: Bool {
+        isSelected || hover.value || (isCursor && app.focusedPane == .sessions)
     }
 
     private var fill: Color {

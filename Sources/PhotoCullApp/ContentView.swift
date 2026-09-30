@@ -152,7 +152,7 @@ struct StatusBar: View {
             }
             Text(app.cfg.paths.inbox.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
                 .font(Typo.mono)
-                .foregroundStyle(Palette.tertiary)
+                .foregroundStyle(Palette.secondary)
                 .lineLimit(1)
                 .truncationMode(.head)
         }
