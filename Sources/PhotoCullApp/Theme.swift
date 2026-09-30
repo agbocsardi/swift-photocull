@@ -136,3 +136,14 @@ struct Keycap: View {
             .overlay(RoundedRectangle(cornerRadius: 3).stroke(EF.bg3, lineWidth: 0.5))
     }
 }
+
+
+/// Replacement for `@State`.
+///
+/// A CommandLineTools-only Swift toolchain ships no SwiftUIMacros plugin, so the
+/// `@State` macro cannot be expanded. `@StateObject` is an ordinary property
+/// wrapper and works, so local view state lives here instead.
+final class ViewState<Value>: ObservableObject {
+    @Published var value: Value
+    init(_ value: Value) { self.value = value }
+}

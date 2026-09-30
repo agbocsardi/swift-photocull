@@ -2,6 +2,19 @@ import SwiftUI
 import AppKit
 
 @main
+enum PhotoCullMain {
+    static func main() {
+        let args = CommandLine.arguments
+        if args.contains("--repair-pairs") {
+            exit(HeadlessCheck.repairPairs(apply: args.contains("--apply")))
+        }
+        if args.contains("--check") {
+            exit(HeadlessCheck.run())
+        }
+        PhotoCullApp.main()
+    }
+}
+
 struct PhotoCullApp: App {
     @StateObject private var app = AppState()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -33,6 +46,12 @@ struct PhotoCullApp: App {
                 Button("Crop current photo") { app.enterCropMode() }
                     .keyboardShortcut("k", modifiers: .command)
                     .disabled(app.currentPair == nil)
+                Divider()
+                Button("Check RAW pairing") { app.checkPairing() }
+                    .disabled(app.sessions.isEmpty)
+                Button("Re-pair RAW files…") { app.repairPairingInteractive() }
+                    .disabled(app.sessions.isEmpty)
+                Divider()
                 Button("Open in Preview") { app.openInPreview() }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
                     .disabled(app.currentPair == nil)

@@ -12,6 +12,8 @@ let runners: [(String, () throws -> Void)] = [
     ("Finalize", suiteFinalize),
     ("ImagePipeline", suiteImagePipeline),
     ("Library", suiteLibrary),
+    ("EndToEnd", suiteEndToEnd),
+    ("PairRepair", suitePairRepair),
 ]
 
 for (name, fn) in runners { suite(name, fn) }

@@ -1,6 +1,15 @@
 import SwiftUI
 import PhotoCullCore
 
+enum CropHandle {
+    case topLeft, top, topRight, left, right, bottomLeft, bottom, bottomRight, move, none
+}
+
+final class CropDragState: ObservableObject {
+    @Published var startRect: CropRect?
+    @Published var handle: CropHandle = .none
+}
+
 /// Draggable, resizable crop rectangle drawn over the full image.
 struct CropOverlay: View {
     @Binding var rect: CropRect
@@ -10,12 +19,8 @@ struct CropOverlay: View {
     let aspect: Double?
     var onAspectRequest: () -> Void = {}
 
-    private enum Handle {
-        case topLeft, top, topRight, left, right, bottomLeft, bottom, bottomRight, move, none
-    }
-
-    @State private var startRect: CropRect?
-    @State private var handle: Handle = .none
+    private typealias Handle = CropHandle
+    @StateObject private var dragState = CropDragState()
 
     private let handleHit: CGFloat = 18
     private let minSize: Double = 0.02
@@ -84,18 +89,18 @@ struct CropOverlay: View {
     private var drag: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if startRect == nil {
-                    startRect = rect
-                    handle = hitHandle(value.startLocation)
+                if dragState.startRect == nil {
+                    dragState.startRect = rect
+                    dragState.handle = hitHandle(value.startLocation)
                 }
-                guard let start = startRect, imageRect.width > 0, imageRect.height > 0 else { return }
+                guard let start = dragState.startRect, imageRect.width > 0, imageRect.height > 0 else { return }
                 let dx = Double(value.translation.width / imageRect.width)
                 let dy = Double(value.translation.height / imageRect.height)
                 rect = resized(start: start, dx: dx, dy: dy)
             }
             .onEnded { _ in
-                startRect = nil
-                handle = .none
+                dragState.startRect = nil
+                dragState.handle = .none
             }
     }
 
@@ -125,7 +130,7 @@ struct CropOverlay: View {
     private func resized(start: CropRect, dx: Double, dy: Double) -> CropRect {
         var x = start.x, y = start.y, w = start.w, h = start.h
 
-        switch handle {
+        switch dragState.handle {
         case .move:
             x = start.x + dx
             y = start.y + dy
@@ -151,8 +156,8 @@ struct CropOverlay: View {
         }
 
         // Enforce a locked aspect ratio.
-        if let aspect, aspect > 0, handle != .move {
-            switch handle {
+        if let aspect, aspect > 0, dragState.handle != .move {
+            switch dragState.handle {
             case .top, .bottom:
                 w = h * aspect
             default:

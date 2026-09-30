@@ -3,7 +3,7 @@ import PhotoCullCore
 
 struct ContentView: View {
     @EnvironmentObject var app: AppState
-    @State private var leftWidth: CGFloat = 268
+    @StateObject private var leftWidth = ViewState<CGFloat>(268)
 
     var body: some View {
         ZStack {
@@ -18,9 +18,9 @@ struct ContentView: View {
                         InfoPane()
                             .frame(height: 208)
                     }
-                    .frame(width: leftWidth)
+                    .frame(width: leftWidth.value)
 
-                    ResizeHandle(width: $leftWidth)
+                    ResizeHandle(width: $leftWidth.value)
 
                     VStack(spacing: 0) {
                         ImagePane()
@@ -52,9 +52,7 @@ struct ContentView: View {
 
             if app.modal == .help { HelpOverlay() }
             if app.modal == .ingest { IngestSheet() }
-            if app.modal == .finalize(date: app.activeDate ?? "") || app.modal == .globalFinalize {
-                FinalizeSheet()
-            }
+            if app.showingFinalizeSheet { FinalizeSheet() }
         }
         .background(EF.bg)
         .onAppear {
@@ -222,7 +220,7 @@ struct CommandBar: View {
 
 struct ResizeHandle: View {
     @Binding var width: CGFloat
-    @State private var startWidth: CGFloat?
+    @StateObject private var drag = ViewState<CGFloat?>(nil)
 
     var body: some View {
         Rectangle()
@@ -235,10 +233,10 @@ struct ResizeHandle: View {
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
-                        if startWidth == nil { startWidth = width }
-                        width = min(max(180, (startWidth ?? width) + value.translation.width), 460)
+                        if drag.value == nil { drag.value = width }
+                        width = min(max(180, (drag.value ?? width) + value.translation.width), 460)
                     }
-                    .onEnded { _ in startWidth = nil }
+                    .onEnded { _ in drag.value = nil }
             )
     }
 }

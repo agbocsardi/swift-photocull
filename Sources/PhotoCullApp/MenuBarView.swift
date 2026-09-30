@@ -67,6 +67,16 @@ struct MenuBarView: View {
                 }
                 .disabled(app.sessions.isEmpty)
 
+                menuButton("Check RAW pairing", icon: "link") {
+                    app.checkPairing()
+                }
+                .disabled(app.sessions.isEmpty)
+
+                menuButton("Re-pair RAW files…", icon: "link.badge.plus") {
+                    app.repairPairingInteractive()
+                }
+                .disabled(app.sessions.isEmpty)
+
                 menuButton("Reveal inbox in Finder", icon: "folder") {
                     NSWorkspace.shared.open(URL(fileURLWithPath: app.cfg.paths.inbox))
                 }
@@ -101,15 +111,8 @@ struct MenuBarView: View {
     }
 
     private func menuButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                Image(systemName: icon).font(.system(size: 11)).frame(width: 14)
-                Text(title).font(.system(size: 11))
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(MenuRowStyle())
+        Button(action: action) { MenuRowLabel(title: title, icon: icon) }
+            .buttonStyle(.plain)
     }
 
     private func activate() {
@@ -123,15 +126,22 @@ struct MenuBarView: View {
     }
 }
 
-struct MenuRowStyle: ButtonStyle {
-    @State private var hovered = false
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .foregroundStyle(hovered ? EF.text : EF.subtle)
-            .background(RoundedRectangle(cornerRadius: 4)
-                .fill(hovered ? EF.bg1 : Color.clear))
-            .onHover { hovered = $0 }
+struct MenuRowLabel: View {
+    let title: String
+    let icon: String
+    @StateObject private var hover = ViewState(false)
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon).font(.system(size: 11)).frame(width: 14)
+            Text(title).font(.system(size: 11))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .foregroundStyle(hover.value ? EF.text : EF.subtle)
+        .background(RoundedRectangle(cornerRadius: 4).fill(hover.value ? EF.bg1 : Color.clear))
+        .contentShape(Rectangle())
+        .onHover { hover.value = $0 }
     }
 }

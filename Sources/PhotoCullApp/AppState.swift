@@ -139,6 +139,13 @@ final class AppState: ObservableObject {
 
     var hasCrop: Bool { !(currentCrop?.isFullFrame ?? true) }
 
+    var showingFinalizeSheet: Bool {
+        switch modal {
+        case .finalize, .globalFinalize: return true
+        default: return false
+        }
+    }
+
     var visibleSessions: [SessionRow] {
         switch filter {
         case .all: return sessions
@@ -506,6 +513,54 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - RAW pair repair
+
+    /// Report how many RAW files are misnamed (dry run).
+    @discardableResult
+    func checkPairing() -> RepairReport? {
+        do {
+            let report = PairRepair.plan(cfg: cfg)
+            if report.renamed == 0 {
+                toastMessage("RAW pairing OK — nothing to repair")
+            } else {
+                toastMessage("\(report.renamed) RAW files can be re-paired (:R to repair)")
+            }
+            return report
+        } catch {
+            fail("Pairing check failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Ask for confirmation, then rename misnamed RAWs back into their pairs.
+    func repairPairingInteractive() {
+        guard let report = checkPairing(), report.renamed > 0 else { return }
+        let alert = NSAlert()
+        alert.messageText = "Re-pair \(report.renamed) RAW files?"
+        alert.informativeText = """
+            Ingest used to rename a RAW to "<name>_2" whenever its JPG was copied in the \
+            same run, which broke the JPG+RAW pair.
+
+            This renames them back (e.g. DSCF0677_2.RAF -> DSCF0677.RAF) when the matching \
+            JPG exists and the target name is free. Originals are not modified or deleted.
+            """
+        alert.addButton(withTitle: "Re-pair")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        applyPairRepair()
+    }
+
+    func applyPairRepair() {
+        do {
+            let report = try PairRepair.apply(cfg: cfg)
+            toastMessage("Re-paired \(report.renamed) RAW files")
+            reloadLibrary()
+            if let date = activeDate { open(date: date) }
+        } catch {
+            fail("Repair failed: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Command mode
 
     func enterCommandMode() {
@@ -526,6 +581,7 @@ final class AppState: ObservableObject {
         case "F": beginGlobalFinalize()
         case "i": beginIngest()
         case "c": enterCropMode()
+        case "R": repairPairingInteractive()
         case "q": NSApp.terminate(nil)
         case "w": saveAndClose()
         default:
