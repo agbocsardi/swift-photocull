@@ -23,6 +23,8 @@ struct PhotoCullApp: App {
         WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(app)
+                .environmentObject(app.imageLoader)
+                .environmentObject(app.canvas)
                 .frame(minWidth: 940, minHeight: 620)
         }
         .defaultSize(width: 1400, height: 880)

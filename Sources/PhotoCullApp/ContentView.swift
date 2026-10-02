@@ -55,7 +55,7 @@ struct ContentView: View {
             // `--crop` opens crop mode so the overlay can be inspected in a snapshot.
             if CommandLine.arguments.contains("--crop") {
                 app.enterCropMode()
-                app.cropRect = CropRect(x: 0.14, y: 0.08, w: 0.62, h: 0.78)
+                app.canvas.cropRect = CropRect(x: 0.14, y: 0.08, w: 0.62, h: 0.78)
             }
         }
     }
@@ -147,6 +147,7 @@ struct ContentView: View {
 /// Thin bottom bar: key hints on the left, inbox location on the right.
 struct StatusBar: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var loader: ImageLoader
 
     private var hints: [(String, String)] {
         if app.cropMode {
@@ -169,7 +170,7 @@ struct StatusBar: View {
                 }
             }
             Spacer(minLength: 8)
-            if app.imageLoader.isLoading {
+            if loader.isLoading {
                 ProgressView().controlSize(.mini).scaleEffect(0.55)
             }
             Text(app.cfg.paths.inbox.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
