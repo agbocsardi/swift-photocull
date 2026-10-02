@@ -96,9 +96,18 @@ func suiteSession() throws {
     checkEqual(st.folderStatus(stems: stems), FolderStatus.inProgress, "some decisions → in progress")
     checkEqual(st.folderStatus(stems: stems).rawValue, "in progress", "in-progress rawValue")
     st.set("B", .reject)
-    st.set("C", .undecided)
-    checkEqual(st.folderStatus(stems: stems), FolderStatus.complete, "all present → complete")
+    st.set("C", .keep)
+    checkEqual(st.folderStatus(stems: stems), FolderStatus.complete, "all decided → complete")
     checkEqual(st.folderStatus(stems: ["X"]), FolderStatus.unstarted, "single unseen stem → unstarted")
+    // Toggle-to-clear writes an .undecided VALUE back; the folder must leave
+    // complete (this exact sequence used to stay complete — bug).
+    st.set("C", .undecided)
+    checkEqual(st.folderStatus(stems: stems), FolderStatus.inProgress,
+               "toggling a decision back to undecided → in progress")
+    st.set("A", .undecided)
+    st.set("B", .undecided)
+    checkEqual(st.folderStatus(stems: stems), FolderStatus.unstarted,
+               "everything toggled back → unstarted")
 
     // ── CropRect ──
     check(CropRect.full.isFullFrame, "full rect is full frame")

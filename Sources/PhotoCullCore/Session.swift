@@ -197,13 +197,16 @@ public final class Session {
         return (keep, reject, undecided)
     }
 
-    /// Folder-level rollup used by the sessions list. Presence in `decisions`
-    /// counts as seen, regardless of the decision value (Go behaviour).
+    /// Folder-level rollup used by the sessions list. Only real decisions
+    /// (keep/reject) count as decided — toggle-to-clear writes an `.undecided`
+    /// value back into `decisions`, and a session where that happened must drop
+    /// out of `complete`. (Deliberate divergence from Go, which counted mere
+    /// presence as seen.)
     public func folderStatus(stems: [String]) -> FolderStatus {
         if stems.isEmpty { return .empty }
-        let seen = stems.filter { decisions[$0.uppercased()] != nil }.count
-        if seen == 0 { return .unstarted }
-        if seen == stems.count { return .complete }
+        let decided = stems.filter { get($0) != .undecided }.count
+        if decided == 0 { return .unstarted }
+        if decided == stems.count { return .complete }
         return .inProgress
     }
 
