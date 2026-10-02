@@ -98,12 +98,18 @@ public enum Ingest {
             var result = IngestResult(copied: 0, skipped: 0, folders: [])
             // Collision map per date folder: date → uppercased stem → count.
             var collisions: [String: [String: Int]] = [:]
+            // Files arrive sorted by path, so consecutive files usually share
+            // one destination date folder — create it once per change.
+            var createdFolder: URL?
 
             for file in files {
                 progress.current = file.lastPathComponent
                 let date = ExifReader.captureDate(url: file)
                 let destFolder = inboxRoot.appendingPathComponent(date)
-                try fm.createDirectory(at: destFolder, withIntermediateDirectories: true)
+                if createdFolder != destFolder {
+                    try fm.createDirectory(at: destFolder, withIntermediateDirectories: true)
+                    createdFolder = destFolder
+                }
 
                 var seen = collisions[date] ?? [:]
                 let destName = safeDestName(file, seen: &seen)

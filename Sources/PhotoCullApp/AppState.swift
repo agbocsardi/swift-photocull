@@ -148,11 +148,16 @@ final class AppState: ObservableObject {
 
     @Published var finalizeStats: [FinalizeStats] = []
     @Published var cropExportMode: CropExportMode = .applyCrop
+    /// True while a finalize runs on a background task. Finalize moves whole
+    /// folders; a second concurrent run would race it.
+    @Published private(set) var finalizeRunning = false
 
     let imageLoader = ImageLoader()
     let thumbs = ThumbnailStore()
 
     private var toastTask: Task<Void, Never>?
+    /// Debounced sidecar write for navigation (trailing edge, ~500 ms).
+    private var persistTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
     private static let appearanceKey = "PhotoCull.appearance"
 
@@ -176,8 +181,9 @@ final class AppState: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
-        detectedCards = Ingest.detectSDCards()
-        if let first = detectedCards.first { ingestSource = first.path }
+        // No SD-card scan here: `detectSDCards` stats /Volumes/*/DCIM, and a
+        // stale network mount can stall the first frame for seconds.
+        // `beginIngest` detects (and defaults `ingestSource`) when needed.
         reloadLibrary()
         if let first = sessions.first { open(date: first.date) }
     }
@@ -290,18 +296,41 @@ final class AppState: ObservableObject {
         cropRect = session?.crop(for: pair.stem) ?? .full
     }
 
-    /// Full-resolution target for decoding: big enough to crop from, bounded for memory.
+    /// Full-resolution target for decoding: big enough to crop from, bounded
+    /// for memory. Uses the EXIF block `loadCurrent` already read — no second
+    /// disk read per navigation.
     var currentMaxPixel: Int {
-        let info = ExifReader.read(url: currentPair?.jpg ?? URL(fileURLWithPath: "/"))
         let longest = max(info.pixelWidth, info.pixelHeight)
-        if longest > 0 { return min(longest, 4096) }
-        return 4096
+        return longest > 0 ? min(longest, 4096) : 4096
     }
 
+    /// Sidecar write for the open session. Rare/immediate path — navigation
+    /// uses `schedulePersist` instead.
     private func persist() {
         guard let session, let date = activeDate else { return }
         do { try session.save(folder: Library.inboxFolder(cfg: cfg, date: date)) }
         catch { fail("Could not save session: \(error.localizedDescription)") }
+    }
+
+    /// Trailing-edge debounce for the per-keystroke navigation write: j/k no
+    /// longer hits disk once per key, the sidecar lands ~500 ms after the
+    /// last one (or immediately via `flushPersist`).
+    private func schedulePersist() {
+        persistTask?.cancel()
+        persistTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.persistTask = nil
+            self.persist()
+        }
+    }
+
+    /// Write a pending debounced persist now (close, finalize, ingest).
+    private func flushPersist() {
+        guard persistTask != nil else { return }
+        persistTask?.cancel()
+        persistTask = nil
+        persist()
     }
 
     // MARK: - Undo / redo
@@ -362,7 +391,7 @@ final class AppState: ObservableObject {
         guard !pairs.isEmpty else { return }
         index = min(max(0, newIndex), pairs.count - 1)
         session?.lastIndex = index
-        persist()
+        schedulePersist()
         cropMode = false
         resetZoom()
         loadCurrent()
@@ -410,10 +439,21 @@ final class AppState: ObservableObject {
     }
 
     private func refreshRows() {
-        let keep = sessions
-        sessions = Library.loadSessions(cfg: cfg)
-        // Preserve scroll/cursor identity across the reload.
-        _ = keep
+        // In-memory row update instead of a full inbox rescan: the open
+        // session + pairs already hold everything `Library.loadSessions`
+        // would re-derive from disk (and a rescan ran on every keystroke).
+        // Full rescans stay in `reloadLibrary` (⌘R, post-ingest, post-finalize).
+        guard let date = activeDate, let session,
+              let i = sessions.firstIndex(where: { $0.date == date }) else { return }
+        let stems = pairs.map(\.stem)
+        let counts = session.statusCounts(stems: stems)
+        sessions[i] = SessionRow(date: date,
+                                 total: pairs.count,
+                                 keep: counts.keep,
+                                 reject: counts.reject,
+                                 undecided: counts.undecided,
+                                 status: session.folderStatus(stems: stems),
+                                 cropped: session.crops.count)
     }
 
     // MARK: - Crop
@@ -599,22 +639,45 @@ final class AppState: ObservableObject {
 
     func beginFinalizeCurrent() {
         guard let date = activeDate else { return }
-        do {
-            finalizeStats = [try Finalize.summary(cfg: cfg, date: date)]
-            modal = .finalize(date: date)
-        } catch { fail("Could not read session: \(error.localizedDescription)") }
+        let cfg = self.cfg
+        // `Finalize.summary` walks the folder + parses the sidecar — keep it
+        // off the main thread so the sheet opens without a stall.
+        Task.detached(priority: .userInitiated) {
+            do {
+                let stats = try Finalize.summary(cfg: cfg, date: date)
+                await MainActor.run {
+                    self.finalizeStats = [stats]
+                    if self.modal == nil { self.modal = .finalize(date: date) }
+                }
+            } catch {
+                await MainActor.run {
+                    self.fail("Could not read session: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     func beginGlobalFinalize() {
         let dates = selectedDates.isEmpty ? visibleSessions.map(\.date) : Array(selectedDates)
         guard !dates.isEmpty else { return }
-        do {
-            finalizeStats = try dates.sorted().map { try Finalize.summary(cfg: cfg, date: $0) }
-            modal = .globalFinalize
-        } catch { fail("Could not read sessions: \(error.localizedDescription)") }
+        let cfg = self.cfg
+        Task.detached(priority: .userInitiated) {
+            do {
+                let stats = try dates.sorted().map { try Finalize.summary(cfg: cfg, date: $0) }
+                await MainActor.run {
+                    self.finalizeStats = stats
+                    if self.modal == nil { self.modal = .globalFinalize }
+                }
+            } catch {
+                await MainActor.run {
+                    self.fail("Could not read sessions: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     func confirmFinalize() {
+        guard !finalizeRunning else { return }
         let dates: [String]
         switch modal {
         case .finalize(let date): dates = [date]
@@ -622,21 +685,45 @@ final class AppState: ObservableObject {
             dates = finalizeStats.map(\.date)
         default: return
         }
+        // Finalize reads the sidecar from disk — land any pending navigation
+        // write first, then hand the whole run to a background task so the UI
+        // stays responsive for the (long) move/trash/dump phase.
+        flushPersist()
         modal = nil
-        do {
-            if dates.count == 1 {
-                let r = try Finalize.run(cfg: cfg, date: dates[0], dump: true,
-                                         cropMode: cropExportMode, dumpOverride: nil)
-                toastMessage("Finalized \(dates[0]) — \(r.archived) archived, \(r.trashed) trashed")
-            } else {
-                let r = try Finalize.runMulti(cfg: cfg, dates: dates, dump: true, cropMode: cropExportMode)
-                toastMessage("Finalized \(r.sessions) sessions — \(r.archived) archived, \(r.trashed) trashed")
+        finalizeRunning = true
+        toastMessage("Finalizing…")
+        let cfg = self.cfg
+        let cropMode = self.cropExportMode
+        Task.detached(priority: .userInitiated) {
+            do {
+                let r: FinalizeResult
+                if dates.count == 1 {
+                    r = try Finalize.run(cfg: cfg, date: dates[0], dump: true,
+                                         cropMode: cropMode, dumpOverride: nil)
+                } else {
+                    r = try Finalize.runMulti(cfg: cfg, dates: dates, dump: true, cropMode: cropMode)
+                }
+                await MainActor.run {
+                    self.finalizeRunning = false
+                    self.selectedDates.removeAll()
+                    if let d = self.activeDate, dates.contains(d) {
+                        self.activeDate = nil; self.pairs = []; self.session = nil
+                    }
+                    self.reloadLibrary()
+                    if let first = self.sessions.first { self.open(date: first.date) }
+                    if dates.count == 1 {
+                        self.toastMessage("Finalized \(dates[0]) — \(r.archived) archived, \(r.trashed) trashed")
+                    } else {
+                        self.toastMessage("Finalized \(r.sessions) sessions — \(r.archived) archived, \(r.trashed) trashed")
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.finalizeRunning = false
+                    self.fail("Finalize failed: \(error.localizedDescription)")
+                }
             }
-            selectedDates.removeAll()
-            if let d = activeDate, dates.contains(d) { activeDate = nil; pairs = []; session = nil }
-            reloadLibrary()
-            if let first = sessions.first { open(date: first.date) }
-        } catch { fail("Finalize failed: \(error.localizedDescription)") }
+        }
     }
 
     // MARK: - Ingest
@@ -649,14 +736,19 @@ final class AppState: ObservableObject {
     }
 
     func startIngest() {
+        flushPersist()
         let source = ingestSource.trimmingCharacters(in: .whitespacesAndNewlines)
         var progress = IngestProgress()
         progress.running = true
         ingestProgress = progress
         let cfg = self.cfg
+        // The copy loop reports once per file (~2k per card); republish at
+        // most every ~150 ms, always letting the final result through.
+        let throttle = ProgressThrottle()
         Task.detached(priority: .userInitiated) {
             do {
                 let result = try Ingest.run(cfg: cfg, source: source.isEmpty ? nil : URL(fileURLWithPath: source)) { p in
+                    guard throttle.shouldPublish(force: p.done) else { return }
                     Task { @MainActor in self.ingestProgress = p }
                 }
                 await MainActor.run {
@@ -683,26 +775,39 @@ final class AppState: ObservableObject {
 
     // MARK: - RAW pair repair
 
-    /// Report how many RAW files are misnamed (dry run).
-    @discardableResult
-    func checkPairing() -> RepairReport? {
-        do {
+    /// Dry-run report of misnamed RAW files. The inbox+archive walk runs on a
+    /// background task; only the toast/report lands on the main thread.
+    func checkPairing() {
+        let cfg = self.cfg
+        Task.detached(priority: .userInitiated) {
             let report = PairRepair.plan(cfg: cfg)
-            if report.renamed == 0 {
-                toastMessage("RAW pairing OK — nothing to repair")
-            } else {
-                toastMessage("\(report.renamed) RAW files can be re-paired (:R to repair)")
+            await MainActor.run {
+                if report.renamed == 0 {
+                    self.toastMessage("RAW pairing OK — nothing to repair")
+                } else {
+                    self.toastMessage("\(report.renamed) RAW files can be re-paired (:R to repair)")
+                }
             }
-            return report
-        } catch {
-            fail("Pairing check failed: \(error.localizedDescription)")
-            return nil
         }
     }
 
     /// Ask for confirmation, then rename misnamed RAWs back into their pairs.
+    /// Plan off-thread, alert on the main thread once the count is known.
     func repairPairingInteractive() {
-        guard let report = checkPairing(), report.renamed > 0 else { return }
+        let cfg = self.cfg
+        Task.detached(priority: .userInitiated) {
+            let report = PairRepair.plan(cfg: cfg)
+            await MainActor.run {
+                guard report.renamed > 0 else {
+                    self.toastMessage("RAW pairing OK — nothing to repair")
+                    return
+                }
+                self.confirmPairRepair(report)
+            }
+        }
+    }
+
+    private func confirmPairRepair(_ report: RepairReport) {
         let alert = NSAlert()
         alert.messageText = "Re-pair \(report.renamed) RAW files?"
         alert.informativeText = """
@@ -759,7 +864,7 @@ final class AppState: ObservableObject {
     }
 
     func saveAndClose() {
-        persist()
+        flushPersist()
         NSApp.keyWindow?.performClose(nil)
     }
 
@@ -937,5 +1042,23 @@ final class AppState: ObservableObject {
             return true
         default: return false
         }
+    }
+}
+
+/// Rate-limits main-thread progress publication from the ingest copy loop.
+/// Called from one background thread, but declared `@unchecked Sendable` to
+/// be honest about it; the lock costs nothing at this rate.
+private final class ProgressThrottle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last = Date.distantPast
+
+    /// True when ≥150 ms have passed since the last accepted publication.
+    /// `force` lets a final result through unconditionally.
+    func shouldPublish(force: Bool = false) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let now = Date()
+        guard force || now.timeIntervalSince(last) >= 0.15 else { return false }
+        last = now
+        return true
     }
 }
