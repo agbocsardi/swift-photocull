@@ -94,3 +94,60 @@ from **repeating expensive work on every interaction frame and every keystroke**
 
 **Deliberately skipped:** single-context combined export transform (transform-algebra risk for an
 export-time-only win), `noneSkipLast` alpha info (percent-level), Metal/vImage (not the lever).
+
+---
+
+# Round 2 — 2026-10-02 (post wave 1+2 merge, commit 2c74263)
+
+Consolidated from three parallel read-only reviews (zai/glm-5.3): `/tmp/perf2/{interaction,io,remaining}.md`.
+All headline numbers re-verified by the parent (probe re-runs, real-inbox thumbcheck, 358/358 suite).
+One reviewer miscounted "356 checks" — parent run confirms 358.
+
+## Measured facts that reshaped the plan
+
+- **ImageIO IDCT cliff**: decode of a 26 MP JPEG costs ~91 ms at maxPixel ≤ 3072 but ~197 ms at
+  3584–4096 (entropy-decode + resample path switch above ~½ native size). The 4096 cap was paying
+  the *worst* point on the curve. Native 6240 = 119 ms.
+- **`FileManager.copyItem` already APFS-clones** same-volume (0.10 ms / 50 MB; 0 MB physical space
+  for 1000 MB logical; clonefile(2) itself 0.08 ms — no win available). Cross-volume (SD ingest)
+  clone is impossible (EXDEV). **Clonefile wrapper: rejected by measurement.**
+- **Embedded thumbnails**: real inbox corpus = 49/49 files EMBEDDED → filmstrip burst rides the
+  0.4 ms path (~45 ms/session). Burst reordering: closed, not needed for this corpus.
+- **Parallelism ceilings**: 2-wide prefetch decodes 1.73×; 8-wide cropped exports 3.1–3.7×;
+  4-wide ingest copies 3.7–5.8× on SSD (UHS-I card realistically ~1.1–1.4×, UHS-II ~1.5–2.5×).
+- **open(date:) main-thread chain ≈ 5 ms warm** (FilePairs 4.2, sidecar 0.1, EXIF 0.2–3).
+
+## Accepted for implementation (wave 3)
+
+| # | Finding | Files | Impact | Effort |
+|---|---------|-------|--------|--------|
+| A1 | Decode cap 4096→3072 (one token; cache slot 45→25 MB ≈ 20 warm photos) | AppState | −53% j/k miss decode | S |
+| A2 | Instant 256px-thumb placeholder in canvas loading branch + crossfade (spinner fallback) | ImagePane | perceived miss latency → ~0 | S |
+| A3 | Prefetch 2-wide TaskGroup + inFlight dedup (radius stays ±1) | ImageLoader | both-neighbours-cold 2× faster | S |
+| A4 | Drop `imageLoader.objectWillChange` forwarding; inject loader via environmentObject | AppState, PhotoCullApp, ImagePane, ContentView | 3 whole-app storms per j/k → 0 | S |
+| A5 | CanvasState micro-extraction: only pan/zoom/cropRect/cropTilt (NOT cropMode/cropAspect/tiltFocused/showCroppedPreview) | AppState, ImagePane, ContentView, PhotoCullApp, new file | ~35 body evals per drag tick → 2 | M |
+| A6 | Context-menu "Finalize…" through async summary path (`beginFinalize(date:)`) | SessionsPane, AppState | removes main-thread folder walk | S |
+| A7 | Delete dead `zoomActual()`/`panBy()` | AppState | cleanup | S |
+| B1 | Parallel cropped-keeper exports (serial dest allocation first; prefix-only moves on failure; temp-name+rename) | Finalize | finalize exports 3.1–3.7× | M |
+| B2 | Ingest 2–4-wide copy workers (serial pre-pass: EXIF, safeDestName, skip decision) | Ingest | SSD 3.7–5.8×, UHS-I 1.1–1.4× | M |
+| B3 | `ProcessInfo.beginActivity(.userInitiatedAllowingIdleSystemSleep)` around ingest/finalize | Ingest/Finalize or AppState | survives App Nap/idle clamp | S |
+| B4 | `.fileSizeKey` in scanSource (drop 1 stat/file) | Ingest | ~20 ms per 2000-file card | S |
+
+Wave split (disjoint file domains): **perf2-app** (A1–A7, `Sources/PhotoCullApp/**`) vs
+**perf2-io-impl** (B1–B4, `Sources/PhotoCullCore/{Ingest,Finalize}.swift` + tests).
+
+## Rejected this round (with reasons)
+
+- clonefile wrapper — copyItem already clones (measured).
+- Filmstrip burst reorder/limit — corpus all-embedded (measured); revisit only if a no-thumb
+  corpus appears (thumbcheck probe kept at /tmp/perf2/thumbcheck).
+- Full-res / two-tier zoom decode — native is *faster* to decode than 4096 (119 vs 197 ms) but
+  104 MB/slot collapses the cache; two-tier re-keys the main-thread CPU edit pipeline on tilted
+  photos. Product decision, not perf; has a known trap.
+- open(date:) async — 5 ms stall vs re-entrancy/lastIndex races.
+- Archive-move/trash/`collisionFreeDestination` parallelism — 0.1 ms ops, racing breaks
+  uniqueness. Cross-date parallelism in runMulti — shared dump folder.
+- QoS changes to .background/.utility for bulk ops — macOS I/O-throttles background QoS;
+  .userInitiated is correct.
+- @Observable, Metal/vImage, drawingGroup, LazyHStack, Equatable cells — standing anti-recs;
+  @Observable additionally needs macros (toolchain can't).
