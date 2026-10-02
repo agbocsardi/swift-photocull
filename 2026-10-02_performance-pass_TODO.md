@@ -5,23 +5,9 @@ Branch: `performance`. Audit report: `docs/performance-audit.md`.
 
 ## Tasks
 
-- [ ] Create `performance` branch
-- [ ] Parallel sub-agent audit (4 reviewers, zai/glm-5.3-flash)
-  - [x] hotpath: crop/tilt/zoom/pan per-frame costs (ImagePane, CropOverlay, AppState, ImageLoader)
-  - [x] pipeline: decode/rotate/crop/encode + caches (ImagePipeline, Exif, build flags)
-  - [ ] render: SwiftUI re-render topology (AppState @Published granularity, filmstrip, overlays)
-  - [x] render: SwiftUI re-render topology (AppState @Published granularity, filmstrip, overlays)
-  - [x] misc: main-thread IO, ingest/finalize responsiveness, KeyMonitor, startup
-- [x] Integrate findings into ranked audit doc → `docs/performance-audit.md`
-- [ ] Implement top fixes (ranked by impact/effort)
-  - [x] perf-view agent: GPU tilt + memoization + view scoping (branch `perf-view`, 8d338f1, merged)
-  - [x] perf-state agent: main-thread IO + threading (branch `perf-state`, 8813f37, merged, 350/350)
-  - [x] Integrate both branches onto `performance`, resolve fallout (clean — disjoint files)
+- [ ] Live crop/tilt feel test by user (fresh `dist/PhotoCull.app` built)
+- [ ] If pan still janks on huge photos: `CanvasState`/`CropDraft` extraction (deferred — see audit)
 
-- [x] Re-verify: 358 checks pass, `--check` green on real library, snapshot renders (2.5MB, non-blank), release bundle built
-- [ ] Live crop/tilt feel test by user
-- [ ] Close worktree workspaces wD (perf-view) / wE (perf-state) after user confirms
-- [ ] Update README/notes if user-facing behavior changed
 
 ## Log
 
@@ -68,3 +54,11 @@ Branch: `performance`. Audit report: `docs/performance-audit.md`.
   sidebar row's `total` (sidecar still written; full rescans remain on ⌘R/ingest/finalize);
   debounced persist can lose ≤500ms of remembered position on a hard kill.
 - Awaiting user live test; worktree workspaces wD/wE kept until confirmation.
+
+### 2026-10-02 (cont. 3) — cleanup
+
+- User confirmed; removed both implementer worktrees (wD perf-view, wE perf-state, clean
+  removals — merged branches `perf-view`/`perf-state` kept in git). Pruned completed TODO items.
+- README needed no changes: no user-facing behavior claims were affected (finalize now runs in
+  background with a toast; ingest card detection moved from launch to ingest-sheet open).
+
