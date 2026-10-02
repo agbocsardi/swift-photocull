@@ -132,6 +132,9 @@ final class AppState: ObservableObject {
     @Published var cropAspect: CropAspect = .free
     /// Working tilt angle while crop mode is open (degrees, clockwise on screen).
     @Published var cropTilt: Double = 0
+    /// True while the tilt slider has keyboard focus: arrows then nudge tilt
+    /// instead of moving the crop region.
+    @Published var tiltFocused = false
     /// When true the image pane shows the cropped result rather than the full frame.
     @Published var showCroppedPreview = true
 
@@ -301,6 +304,58 @@ final class AppState: ObservableObject {
         catch { fail("Could not save session: \(error.localizedDescription)") }
     }
 
+    // MARK: - Undo / redo
+
+    /// One reversible change. Unlimited depth. Edits capture their target
+    /// session and its date, so undo works even after switching sessions.
+    private struct Edit {
+        let what: String
+        let date: String
+        let target: Session
+        let change: (Session) -> Void
+        let revert: (Session) -> Void
+    }
+
+    private var undoStack: [Edit] = []
+    private var redoStack: [Edit] = []
+
+    /// Apply a change, record it for undo, drop any redo history.
+    private func run(_ what: String, change: @escaping (Session) -> Void,
+                     revert: @escaping (Session) -> Void) {
+        guard let target = session, let date = activeDate else { return }
+        change(target)
+        undoStack.append(Edit(what: what, date: date, target: target,
+                              change: change, revert: revert))
+        redoStack.removeAll()
+        if target === session { revision += 1 }
+        persist(target, date)
+    }
+
+    func undo() {
+        guard let edit = undoStack.popLast() else { toastMessage("Nothing to undo"); return }
+        edit.revert(edit.target)
+        redoStack.append(edit)
+        if edit.target === session { revision += 1 }
+        persist(edit.target, edit.date)
+        refreshRows()
+        toastMessage("Undid \(edit.what)")
+    }
+
+    func redo() {
+        guard let edit = redoStack.popLast() else { toastMessage("Nothing to redo"); return }
+        edit.change(edit.target)
+        undoStack.append(edit)
+        if edit.target === session { revision += 1 }
+        persist(edit.target, edit.date)
+        refreshRows()
+        toastMessage("Redid \(edit.what)")
+    }
+
+    private func persist(_ target: Session, _ date: String) {
+        do { try target.save(folder: Library.inboxFolder(cfg: cfg, date: date)) }
+        catch { fail("Could not save session: \(error.localizedDescription)") }
+    }
+
     // MARK: - Navigation
 
     func setIndex(_ newIndex: Int) {
@@ -331,15 +386,15 @@ final class AppState: ObservableObject {
     /// Toggle-to-clear, otherwise set and auto-advance — matches the webapp.
     func mark(_ wanted: Decision) {
         guard let pair = currentPair else { return }
-        if self.decision(for: pair.stem) == wanted {
-            session?.set(pair.stem, .undecided)
-            revision += 1
-            persist()
+        let stem = pair.stem
+        let current = decision(for: stem)
+        if current == wanted {
+            run("clearing \(stem)", change: { $0.set(stem, .undecided) },
+                revert: { $0.set(stem, current) })
             refreshRows()
         } else {
-            session?.set(pair.stem, wanted)
-            revision += 1
-            persist()
+            run("deciding \(stem)", change: { $0.set(stem, wanted) },
+                revert: { $0.set(stem, current) })
             refreshRows()
             if index < pairs.count - 1 { setIndex(index + 1) }
         }
@@ -347,9 +402,10 @@ final class AppState: ObservableObject {
 
     func clearDecision() {
         guard let pair = currentPair else { return }
-        session?.set(pair.stem, .undecided)
-        revision += 1
-        persist()
+        let stem = pair.stem
+        let current = decision(for: stem)
+        run("clearing \(stem)", change: { $0.set(stem, .undecided) },
+            revert: { $0.set(stem, current) })
         refreshRows()
     }
 
@@ -385,24 +441,28 @@ final class AppState: ObservableObject {
     func commitCrop() {
         guard let stem = currentStem else { return }
         let rect = cropRect.clamped(minSize: 0.02)
-        session?.setCrop(stem, rect.isFullFrame ? nil : rect)
-        session?.setTilt(stem, cropTilt)
-        revision += 1
-        persist()
+        let priorCrop = session?.crop(for: stem)
+        let priorTilt = session?.tilt(for: stem)
+        let newCrop: CropRect? = rect.isFullFrame ? nil : rect
+        let newTilt: Double? = abs(cropTilt) < 0.05 ? nil : cropTilt
+        run(newCrop == nil ? "clearing the crop" : "cropping \(stem)",
+            change: { s in s.setCrop(stem, newCrop); s.setTilt(stem, newTilt) },
+            revert: { s in s.setCrop(stem, priorCrop); s.setTilt(stem, priorTilt) })
         refreshRows()
         cropMode = false
-        toastMessage(rect.isFullFrame && !hasTilt ? "Crop cleared"
-                   : rect.isFullFrame ? "Tilt saved" : "Crop saved")
+        toastMessage(newCrop == nil ? (newTilt == nil ? "Crop cleared" : "Tilt saved")
+                                     : "Crop saved")
     }
 
     func clearCrop() {
         guard let stem = currentStem else { return }
-        session?.setCrop(stem, nil)
-        session?.setTilt(stem, nil)
+        let priorCrop = session?.crop(for: stem)
+        let priorTilt = session?.tilt(for: stem)
+        run("clearing the crop",
+            change: { s in s.setCrop(stem, nil); s.setTilt(stem, nil) },
+            revert: { s in s.setCrop(stem, priorCrop); s.setTilt(stem, priorTilt) })
         cropRect = .full
         cropTilt = 0
-        revision += 1
-        persist()
         refreshRows()
         toastMessage("Crop cleared")
     }
@@ -411,9 +471,10 @@ final class AppState: ObservableObject {
     /// orientation fix, not something that needs an edit-mode commit.
     func rotateQuarter(_ dir: Int) {
         guard let stem = currentStem else { return }
-        session?.setQuarter(stem, currentQuarterTurns + dir)
-        revision += 1
-        persist()
+        let prior = currentQuarterTurns
+        run("rotating \(stem)",
+            change: { $0.setQuarter(stem, prior + dir) },
+            revert: { $0.setQuarter(stem, prior) })
     }
 
     /// Nudge the working tilt in crop mode. Values land on a 0.25° grid,
@@ -723,6 +784,11 @@ final class AppState: ObservableObject {
 
     /// Returns true when the key was consumed.
     func handle(_ key: KeyEvent) -> Bool {
+        if key.command {
+            guard key.chars == "z" else { return false }
+            if key.shift { redo() } else { undo() }
+            return true
+        }
         if commandMode { return handleCommandKey(key) }
         if let modal { return handleModalKey(key, modal: modal) }
         if cropMode { return handleCropKey(key) }
@@ -756,6 +822,12 @@ final class AppState: ObservableObject {
     }
 
     private func handleCropKey(_ key: KeyEvent) -> Bool {
+        // While the tilt slider has focus, arrows adjust tilt, not the crop.
+        if tiltFocused, let dir = key.arrow {
+            let d: Double = dir == .left || dir == .up ? -1 : 1
+            nudgeTilt(key.shift ? d : d / 4)
+            return true
+        }
         let step: Double = key.shift ? 0.02 : 0.005
         switch key.arrow {
         case .left:

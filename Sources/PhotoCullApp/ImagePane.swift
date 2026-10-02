@@ -6,6 +6,8 @@ import PhotoCullCore
 /// the numbered keyboard map stays coherent.
 struct ImagePane: View {
     @EnvironmentObject var app: AppState
+    /// Keyboard focus on the tilt slider: arrows then nudge tilt.
+    @FocusState private var tiltFocused: Bool
 
     /// What the pane actually draws. This is the exact edit pipeline the
     /// export runs (quarter turn → tilt → crop), so preview == output.
@@ -59,8 +61,20 @@ struct ImagePane: View {
                                     imageRect: CGRect(origin: origin, size: shown),
                                     aspect: app.cropAspect.ratio,
                                     onAspectRequest: { app.applyAspect() },
-                                    onTiltChange: { app.cropTilt = $0 }
+                                    onInteract: {
+                                        if app.tiltFocused {
+                                            tiltFocused = false
+                                            app.tiltFocused = false
+                                        }
+                                    }
                                 )
+                            }
+                            if app.cropMode {
+                                VStack {
+                                    Spacer()
+                                    tiltBar
+                                }
+                                .frame(width: container.width, height: container.height)
                             }
                         }
                         .contentShape(Rectangle())
@@ -104,6 +118,43 @@ struct ImagePane: View {
         }
         .background(Surface.chrome)
         .animation(Motion.normal, value: app.cropMode)
+        .onChange(of: tiltFocused) { _, focused in app.tiltFocused = focused }
+        .onChange(of: app.cropMode) { _, on in
+            if !on {
+                tiltFocused = false
+                app.tiltFocused = false
+            }
+        }
+    }
+
+    /// Floating tilt control under the canvas while crop mode is open.
+    /// Drag it, or click it to focus and use ← → (⇧ for 1°) / ↑ ↓.
+    private var tiltBar: some View {
+        HStack(spacing: Metric.elementGap) {
+            Text("TILT")
+                .font(Typo.sectionHeader)
+                .tracking(0.4)
+                .foregroundStyle(Palette.crop)
+                .onTapGesture { tiltFocused = true }
+            Slider(value: Binding(
+                get: { app.cropTilt },
+                set: { app.cropTilt = ($0 * 4).rounded() / 4 }),
+                in: -45...45, step: 0.25)
+                .frame(width: 320)
+                .focused($tiltFocused)
+            Text(String(format: "%+.2f°", app.cropTilt))
+                .font(Typo.number)
+                .monospacedDigit()
+                .frame(width: 60, alignment: .trailing)
+            FloatingButton(symbol: "arrow.counterclockwise", tint: Palette.secondary,
+                           tip: "Reset tilt (t)", filled: false) { app.resetTilt() }
+        }
+        .padding(.horizontal, Metric.elementGap + 4)
+        .padding(.vertical, 6)
+        .background(Capsule(style: .continuous).fill(Surface.floating))
+        .overlay(Capsule(style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+        .shadowMedium()
+        .padding(.bottom, Metric.elementGap * 2)
     }
 
     /// Right-hand header content: crop and zoom state, mirroring the other panes.

@@ -66,12 +66,12 @@ final class KeyMonitor {
            responder is NSTextView || responder is NSTextField {
             return false
         }
-        // Leave system shortcuts (⌘…) alone.
-        if event.modifierFlags.contains(.command) { return false }
-
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let raw = event.charactersIgnoringModifiers ?? ""
         let lower = raw.lowercased()
+
+        // Leave system shortcuts (⌘…) alone — except undo/redo.
+        if event.modifierFlags.contains(.command), lower != "z" { return false }
 
         var arrow: KeyEvent.Arrow?
         switch event.keyCode {

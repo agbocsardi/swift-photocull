@@ -196,3 +196,21 @@ the current macOS setting. Restored the original unset preference before relaunc
   diagonals; fixed to ctx.bytesPerRow. 22 new checks in Tests_Rotation; 348 total
   pass. Live render verified via snapshot with a temporarily tilted sidecar
   (badges + rotation + fill all visible), then restored.
+
+### 2026-10-02 (follow-up 6) — tilt slider replaces drag-to-level; undo/redo
+
+- **Tilt drag removed**: the horizon-drag computed the angle of the whole drag
+  vector, so any non-horizontal drag slammed into the ±45 clamp ("immediately
+  tilted to the max"). Replaced with a floating TILT slider in crop mode:
+  drag it, or click it to focus and use ←/→/↑/↓ (0.25°, ⇧ = 1°). Focus is
+  bridged via a FocusState → AppState flag; handleCropKey reroutes arrows to
+  nudgeTilt while focused. Grabbing the canvas (tap/drag) hands focus back.
+- **⌘Z / ⇧⌘Z undo-redo, unlimited depth.** All mutators (decide/clear,
+  crop+tilt commit, clear, quarter rotation) route through one `run()` choke
+  point that records change/revert closures bound to the *target session and
+  date* — so undo works across session switches and re-persists the right
+  sidecar. Linear stack, not a branching tree; finalize deletes folders, so
+  undoing across a finalize just fails its save with a toast. ⌘ keys now pass
+  through the KeyMonitor only for z. No unit tests (app-layer); verified live.
+- Snapshot: `--crop` opens crop mode for headless UI inspection; verified the
+  slider bar, live angle in the header, and tilt-under-crop rendering.
