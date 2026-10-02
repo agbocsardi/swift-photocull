@@ -130,3 +130,10 @@ the current macOS setting. Restored the original unset preference before relaunc
   so ↑/↓ after a click act in the clicked pane.
 - Help sheet gained a Mouse column; README gained a Mouse section. 326 checks pass;
   snapshot renders. Not yet verified by hand in a live session.
+
+### 2026-10-02 (follow-up) — filmstrip thumbnail refresh
+
+- ThumbCell slots pin identity to the slot index (`.id(i)`), so `.onAppear` fired only
+  once per slot; after switching sessions the new photos never started loading and the
+  filmstrip kept spinning. Latent since the filmstrip landed; surfaced by mouse session
+  hopping. Fixed with `.task(id: pair.jpg)`. Committed bb56995.

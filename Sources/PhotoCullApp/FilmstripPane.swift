@@ -136,6 +136,9 @@ private struct ThumbCell: View {
         .onHover { hover.value = $0 }
         .onTapGesture { app.setIndex(index) }
         .help("\(pair.stem).JPG")
-        .onAppear { _ = thumbs.thumbnail(for: pair.jpg) }
+        // `.task(id:)` reloads when the slot's photo changes — cells keep their
+        // index identity across session switches, so `.onAppear` would never
+        // re-fire and the filmstrip would keep the previous session's spinners.
+        .task(id: pair.jpg) { _ = thumbs.thumbnail(for: pair.jpg) }
     }
 }
