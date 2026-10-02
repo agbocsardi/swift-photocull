@@ -10,6 +10,8 @@ let runners: [(String, () throws -> Void)] = [
     ("Exif", suiteExif),
     ("Ingest", suiteIngest),
     ("Finalize", suiteFinalize),
+    ("FinalizeParallel", suiteFinalizeParallel),
+    ("IngestConcurrent", suiteIngestConcurrent),
     ("ImagePipeline", suiteImagePipeline),
     ("Rotation", suiteRotation),
     ("Library", suiteLibrary),
