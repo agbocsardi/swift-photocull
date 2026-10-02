@@ -21,7 +21,16 @@ struct FilmstripPane: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: Metric.elementGap) {
+                        // Non-lazy on purpose. LazyHStack + programmatic
+                        // scrollTo misbehaves on macOS: cells materialize
+                        // blank when navigating back and forth, and scrollTo
+                        // can no-op on ids that aren't materialized yet, so
+                        // far jumps don't center. Thumbnails are capped at
+                        // 256px and sessions hold ~150 photos max (~30MB),
+                        // so mounting every cell is cheap and stays
+                        // subscription-safe: every cell re-renders on cache
+                        // changes instead of only the recycled window.
+                        HStack(spacing: Metric.elementGap) {
                             ForEach(Array(app.pairs.enumerated()), id: \.element.jpg) { i, pair in
                                 ThumbCell(pair: pair, index: i,
                                           decision: app.decision(for: pair.stem),
@@ -79,6 +88,11 @@ private struct ThumbCell: View {
                     Image(decorative: cg, scale: 1)
                         .resizable()
                         .scaledToFit()
+                } else if thumbs.isFailed(pair.jpg) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(Typo.iconSmall)
+                        .foregroundStyle(Palette.warning)
+                        .help("Could not read this file's preview")
                 } else {
                     ProgressView().controlSize(.mini).scaleEffect(0.5)
                 }
@@ -139,6 +153,8 @@ private struct ThumbCell: View {
         // Reload when this slot's photo changes. Cell identity is the photo's
         // full URL (see the ForEach above), so a session switch rebuilds every
         // cell and this runs fresh; it also covers in-place photo changes.
+        // A cell whose thumbnail was LRU-evicted while off-screen heals here
+        // too, because lazy remounting re-runs this task on re-appear.
         .task(id: pair.jpg) { _ = thumbs.thumbnail(for: pair.jpg) }
     }
 }

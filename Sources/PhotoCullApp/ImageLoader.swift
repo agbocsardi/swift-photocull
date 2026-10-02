@@ -57,25 +57,37 @@ final class ImageLoader: ObservableObject {
 /// Shared thumbnail cache backing the filmstrip and session rows.
 @MainActor
 final class ThumbnailStore: ObservableObject {
-    @Published private(set) var images: [String: CGImage] = [:]
+    /// Bumped whenever a thumbnail arrives or the cache clears, so observed
+    /// cells re-read `cached(for:)`. The LRU below is the ONLY storage:
+    /// a parallel published dictionary would pin every thumbnail in memory
+    /// forever (defeating the capacity limit) and disagree with the cache
+    /// once entries get evicted.
+    @Published private(set) var generation = 0
 
     private let cache = ImageCache(capacity: 512)
     private var inFlight: Set<String> = []
+    /// Keys whose decode returned nil, so cells show a failure mark instead
+    /// of spinning forever. Not retried within this run; a repaired file is
+    /// picked up after an app relaunch (or a future `clear()` call site).
+    private var failed: Set<String> = []
     private let maxPixel = 256
 
     func thumbnail(for url: URL) -> CGImage? {
         let key = ImageCache.key(url: url, maxPixel: maxPixel)
         if let hit = cache.image(for: key) { return hit }
-        guard !inFlight.contains(key) else { return nil }
+        guard !failed.contains(key), !inFlight.contains(key) else { return nil }
         inFlight.insert(key)
         Task.detached(priority: .utility) {
             let img = ImagePipeline.thumbnail(url: url, maxPixel: self.maxPixel)
             await MainActor.run {
                 self.inFlight.remove(key)
                 if let img {
+                    self.failed.remove(key)
                     self.cache.store(img, for: key)
-                    self.images[key] = img
+                } else {
+                    self.failed.insert(key)
                 }
+                self.generation += 1
             }
         }
         return nil
@@ -85,9 +97,13 @@ final class ThumbnailStore: ObservableObject {
         cache.image(for: ImageCache.key(url: url, maxPixel: maxPixel))
     }
 
+    func isFailed(_ url: URL) -> Bool {
+        failed.contains(ImageCache.key(url: url, maxPixel: maxPixel))
+    }
+
     func clear() {
         cache.clear()
-        images = [:]
+        generation += 1
     }
 }
 

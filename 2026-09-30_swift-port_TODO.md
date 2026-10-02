@@ -144,3 +144,35 @@ the current macOS setting. Restored the original unset preference before relaunc
   (`.id(i)` overrode the ForEach id), so lazy-stack reuse kept stale pictures. Cell identity
   is now the photo's full URL (`id: \.element.jpg`, `.id(i)` removed; scrollTo follows).
   Session switch now rebuilds every cell. User confirmed working in the live app.
+
+### 2026-10-02 (follow-up 3) — thumbnail memory: LRU is the single source of truth
+
+- **Latent bug:** `ThumbnailStore` stored thumbnails in the 512-entry LRU *and* a parallel
+  `@Published images` dictionary. The dictionary pinned every thumbnail in memory forever
+  (capacity limit defeated, unbounded growth on long culling runs) and could disagree with
+  the cache after eviction — a re-rendered cell would read `cached()` == nil with no reload
+  trigger, i.e. a future "no previews" report.
+- Fix: dropped the parallel dictionary; the LRU is the only storage and a published
+  `generation` counter (bumped on store/clear) is the change signal for observed cells.
+  Evicted off-screen cells heal on lazy remount (`.task(id: pair.jpg)` re-runs); visible
+  cells stay warm because every render's `cached()` call touches their LRU entry.
+- Deliberately did NOT add reload-on-eviction reactivity: reloading evicted keys would
+  ping-pong with new stores (classic cache thrash) once past capacity.
+- `swift run PhotoCullTests` 326 checks pass; `--snapshot` renders identically.
+
+### 2026-10-02 (follow-up 4) — random filmstrip blanks while navigating
+
+- **Symptom:** random blank cells appear when navigating back and forth (j/k). Not
+  eviction (sessions hold ≤148 photos, capacity is 512); warm cache reads can't blank.
+- **Diagnosis:** `LazyHStack` + programmatic `withAnimation { proxy.scrollTo }` on every
+  index change is a known-rough macOS SwiftUI combo — lazily materialized cells render
+  blank on reuse, and scrollTo can no-op on not-yet-materialized ids. Also, a nil decode
+  left a cell spinning forever with no retry/failure state.
+- Fix: `LazyHStack` → plain `HStack` (thumbnails ≤256px, largest session 148 photos ≈
+  30MB worst case — mounting all cells is cheap and every cell stays subscribed to the
+  store); scrollTo now always finds a materialized id. `ThumbnailStore` gained a `failed`
+  set: a nil decode shows a warning triangle instead of an eternal spinner (no retry
+  within a run — repaired files pick up on relaunch).
+- Snapshot band check (pixel stdev + per-slot fill, before vs after): identical content,
+  12/12 viewport slots filled both builds. Intermittent-on-navigation bug needs live
+  j/k verification. 326 checks pass.
