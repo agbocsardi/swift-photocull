@@ -114,6 +114,7 @@ struct HelpSheet: View {
         ("← ↑ ↓ →", "Move the crop region"),
         ("⇧ + arrows", "Resize the crop region"),
         ("drag", "Move or resize with the mouse"),
+        ("⇧ + drag", "Resize while keeping the aspect ratio"),
         ("a", "Cycle the aspect ratio"),
         ("r", "Reset the crop to the full frame"),
         ("p", "Toggle the cropped preview"),

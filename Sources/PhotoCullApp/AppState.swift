@@ -399,12 +399,17 @@ final class AppState: ObservableObject {
     }
 
     private func constrainTo(_ ratio: Double) {
+        // `ratio` is geometric (w/h on screen); normalized coords span the
+        // image's own width/height, so scale by the inverse image aspect.
+        guard let pair = currentPair,
+              let size = ImagePipeline.orientedPixelSize(url: pair.jpg), size.height > 0 else { return }
+        let r = ratio * Double(size.height) / Double(size.width)
         let cx = cropRect.x + cropRect.w / 2
         let cy = cropRect.y + cropRect.h / 2
         var w = cropRect.w
-        var h = w / ratio
-        if h > 1 { h = 1; w = h * ratio }
-        if w > 1 { w = 1; h = w / ratio }
+        var h = w / r
+        if h > 1 { h = 1; w = h * r }
+        if w > 1 { w = 1; h = w / r }
         let x = min(max(0, cx - w / 2), 1 - w)
         let y = min(max(0, cy - h / 2), 1 - h)
         cropRect = CropRect(x: x, y: y, w: w, h: h)

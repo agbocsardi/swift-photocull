@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import PhotoCullCore
 
@@ -155,13 +156,25 @@ struct CropOverlay: View {
             return rect
         }
 
-        // Enforce a locked aspect ratio.
-        if let aspect, aspect > 0, dragState.handle != .move {
+        // Enforce a locked aspect ratio: a chosen preset, or Shift to keep
+        // the shape the crop had when the drag started. Presets are geometric
+        // (w/h as seen on screen), so convert via the image's own aspect.
+        let shift = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.shift)
+        let imageAspect = imageRect.width / imageRect.height
+        let lock = aspect.map { $0 / imageAspect } ?? (shift && start.h > 0 ? start.w / start.h : nil)
+        if let lock, lock > 0, dragState.handle != .move {
             switch dragState.handle {
             case .top, .bottom:
-                w = h * aspect
+                w = h * lock
+                x = start.x + (start.w - w) / 2
+            case .left, .right:
+                h = w / lock
+                y = start.y + (start.h - h) / 2
+            case .topLeft, .topRight:
+                h = w / lock
+                y = start.y + start.h - h  // keep the opposite edge anchored
             default:
-                h = w / aspect
+                h = w / lock
             }
         }
 
