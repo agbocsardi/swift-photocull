@@ -68,6 +68,14 @@ public enum Finalize {
     public static func run(cfg: PCConfig, date: String, dump: Bool,
                            cropMode: CropExportMode,
                            dumpOverride: URL?) throws -> FinalizeResult {
+        // App Nap guard: mark CPU+IO as user-initiated so macOS does not
+        // throttle the run, while still allowing idle *display* sleep
+        // (not idleSystemSleepDisabled).
+        let activity = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "PhotoCull finalize in progress")
+        defer { ProcessInfo.processInfo.endActivity(activity) }
+
         let fm = FileManager.default
         let folder = try inboxFolder(cfg: cfg, date: date)
         let archiveFolder = URL(fileURLWithPath: PCConfig.expandHome(cfg.paths.archive))
@@ -87,15 +95,46 @@ public enum Finalize {
 
         var archived = 0, trashed = 0, dumped = 0, cropped = 0
 
+        // ── Three phases (perf wave 3, B1) ─────────────────────────────────
+        //
+        // PHASE 1 (serial, exact scan order): PURE PLANNING — no filesystem
+        // side effects beyond the dump/archive directory creations above,
+        // which the old serial loop also did up-front. Classify each pair
+        // and allocate EVERY destination — dump dst, archive jpgDst,
+        // rawDst — via collisionFreeDestination. Allocation must stay
+        // serial: it probes the filesystem with fileExists(), and under
+        // concurrency two workers could probe the same not-yet-written
+        // name, both see "free", and the second write clobbers the first.
+        // Cropped keepers queue an export job.
+        //
+        // PHASE 2 (parallel, width = active core count): cropped exports
+        // via ImagePipeline.export, each written to "<dst>.tmp" — the only
+        // files this phase touches. A failed or cancelled encode then never
+        // leaves a truncated file in the dump: failed encodes remove their
+        // tmp, successes are left staged for phase 3 to promote. All
+        // outcomes are collected; nothing throws here.
+        //
+        // PHASE 3 (serial, exact scan order, fail-fast): every ordered side
+        // effect happens here — rejects trashed, unedited keepers
+        // dump-cloned, staged exports renamed into place, archive moves —
+        // in the original pair order, counters incrementing at the point
+        // of effect. A failure at pair k therefore reproduces the old
+        // serial end state exactly: pairs before k fully processed, k..N
+        // untouched (still in the inbox, not dumped, later rejects not
+        // trashed), and the first error thrown. On the break, staged tmp
+        // exports of unprocessed pairs are removed — after any run (success
+        // or failure) no *.tmp files remain; only a hard crash can leave
+        // them, where the .tmp name marks them as incomplete anyway.
+
+        // PHASE 1 — planning only.
+        var plans: [Plan] = []
+        var jobs: [ExportJob] = []
         for pair in pairs {
+            var kind = Plan.Kind.dumpClone
+            var dumpDst: URL?
             switch session.get(pair.stem) {
             case .reject:
-                try trash(pair.jpg)
-                trashed += 1
-                if let raw = pair.raw {
-                    try trash(raw)
-                    trashed += 1
-                }
+                kind = .reject
             default:  // keep and undecided are treated the same
                 if dump {
                     let dst = collisionFreeDestination(for: pair.jpg, in: dumpFolder)
@@ -104,23 +143,70 @@ public enum Finalize {
                     let turns = cropMode == .applyCrop ? session.quarterTurns(for: pair.stem) : 0
                     let hasCrop = crop.map { !$0.isFullFrame } ?? false
                     if hasCrop || tilt != 0 || turns != 0 {
-                        try ImagePipeline.export(src: pair.jpg, crop: crop, to: dst,
-                                                 quality: 0.9, tilt: tilt, quarterTurns: turns)
-                        cropped += 1
+                        kind = .export(jobIndex: jobs.count)
+                        jobs.append(ExportJob(src: pair.jpg, dst: dst, crop: crop,
+                                              tilt: tilt, turns: turns))
                     } else {
-                        try fm.copyItem(at: pair.jpg, to: dst)
+                        dumpDst = dst
                     }
-                    dumped += 1
-                }
-                let jpgDst = collisionFreeDestination(for: pair.jpg, in: archiveFolder)
-                try fm.moveItem(at: pair.jpg, to: jpgDst)
-                archived += 1
-                if let raw = pair.raw {
-                    let rawDst = collisionFreeDestination(for: raw, in: archiveFolder)
-                    try fm.moveItem(at: raw, to: rawDst)
-                    archived += 1
                 }
             }
+            let jpgDst = collisionFreeDestination(for: pair.jpg, in: archiveFolder)
+            var rawDst: URL?
+            if let raw = pair.raw {
+                rawDst = collisionFreeDestination(for: raw, in: archiveFolder)
+            }
+            plans.append(Plan(kind: kind, jpg: pair.jpg, dumpDst: dumpDst,
+                              jpgDst: jpgDst, raw: pair.raw, rawDst: rawDst))
+        }
+
+        // PHASE 2
+        let outcomes = exportAllParallel(jobs: jobs)
+
+        // PHASE 3 — all side effects, in exact scan order, fail-fast.
+        var firstFailure: Error?
+        loop: for (i, plan) in plans.enumerated() {
+            switch plan.kind {
+            case .reject:
+                try trash(plan.jpg)
+                trashed += 1
+                if let raw = plan.raw {
+                    try trash(raw)
+                    trashed += 1
+                }
+                continue
+            case .dumpClone:
+                if let dumpDst = plan.dumpDst {
+                    try fm.copyItem(at: plan.jpg, to: dumpDst)  // APFS clone
+                    dumped += 1
+                }
+            case .export(let jobIndex):
+                if let error = outcomes[jobIndex].error {
+                    firstFailure = error
+                    // The failing pair's tmp is already gone (removed by the
+                    // worker's error path); remove the staged exports of
+                    // every unprocessed pair so the dump stays clean.
+                    for later in plans[(i + 1)...] {
+                        if case .export(let j) = later.kind {
+                            try? fm.removeItem(at: stagedPath(for: jobs[j].dst))
+                        }
+                    }
+                    break loop
+                }
+                try fm.moveItem(at: stagedPath(for: jobs[jobIndex].dst),
+                                to: jobs[jobIndex].dst)
+                dumped += 1
+                cropped += 1
+            }
+            try fm.moveItem(at: plan.jpg, to: plan.jpgDst)
+            archived += 1
+            if let raw = plan.raw, let rawDst = plan.rawDst {
+                try fm.moveItem(at: raw, to: rawDst)
+                archived += 1
+            }
+        }
+        if let firstFailure {
+            throw firstFailure
         }
 
         for raw in orphanRAWs {
@@ -197,6 +283,103 @@ public enum Finalize {
     /// Absolute inbox folder URL for a date.
     static func inboxFolder(cfg: PCConfig, date: String) throws -> URL {
         URL(fileURLWithPath: PCConfig.expandHome(cfg.paths.inbox)).appendingPathComponent(date)
+    }
+
+    /// One cropped export queued by phase 1, executed in phase 2.
+    private struct ExportJob: Sendable {
+        let src: URL
+        let dst: URL
+        let crop: CropRect?
+        let tilt: Double
+        let turns: Int
+    }
+
+    /// Per-pair phase-3 plan: what kind of pair this is (decided in phase 1),
+    /// where the dump clone goes (unedited keepers, when dumping), which
+    /// export job must have succeeded before the pair may proceed, and where
+    /// the archive moves go.
+    private struct Plan {
+        enum Kind {
+            /// Trash the jpg (+raw).
+            case reject
+            /// Unedited keeper: clone to the dump when dumping.
+            case dumpClone
+            /// Cropped keeper: promote staged export `jobIndex` first.
+            case export(jobIndex: Int)
+        }
+        let kind: Kind
+        let jpg: URL
+        let dumpDst: URL?
+        let jpgDst: URL
+        let raw: URL?
+        let rawDst: URL?
+    }
+
+    /// Where an export's staged ("<dst>.tmp") file lives until phase 3
+    /// promotes it into place.
+    private static func stagedPath(for dst: URL) -> URL {
+        dst.appendingPathExtension("tmp")
+    }
+
+    /// Per-export outcome. Boxes the error in a class so results cross task
+    /// boundaries without sending `any Error` values between tasks.
+    private final class ExportOutcome: @unchecked Sendable {
+        let error: Error?
+        init(error: Error?) { self.error = error }
+    }
+
+    /// Unreachable placeholder: every child returns an outcome, even on error.
+    private struct ExportOutcomeMissing: Error {}
+
+    /// Run cropped exports `jobs` on a TaskGroup capped at the active core
+    /// count (measured 3.1–3.7× over serial at width 8). Each export is
+    /// written to "<dst>.tmp" and left staged — phase 3 does the ordered
+    /// rename — so a failed encode never leaves a truncated dump file, and a
+    /// failed RUN never leaves dumps for pairs the fail-fast contract keeps
+    /// untouched. Returns one outcome per job, aligned with the input; errors
+    /// are reported, never thrown. The group runs on a detached task and the
+    /// synchronous caller waits on a semaphore — `run` stays a synchronous
+    /// API (AppState and the CLI call it directly).
+    private static func exportAllParallel(jobs: [ExportJob]) -> [ExportOutcome] {
+        final class ResultsBox: @unchecked Sendable { var values: [ExportOutcome] = [] }
+        let box = ResultsBox()
+        let sem = DispatchSemaphore(value: 0)
+        let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
+        Task.detached(priority: .userInitiated) {
+            let results = await withTaskGroup(of: (Int, ExportOutcome).self,
+                                              returning: [ExportOutcome].self) { group in
+                var next = 0
+                func add(_ i: Int) {
+                    let job = jobs[i]
+                    group.addTask {
+                        let tmp = stagedPath(for: job.dst)
+                        do {
+                            try ImagePipeline.export(src: job.src, crop: job.crop, to: tmp,
+                                                     quality: 0.9, tilt: job.tilt,
+                                                     quarterTurns: job.turns)
+                            return (i, ExportOutcome(error: nil))  // stays staged for phase 3
+                        } catch {
+                            try? FileManager.default.removeItem(at: tmp)
+                            return (i, ExportOutcome(error: error))
+                        }
+                    }
+                }
+                // Keep exactly `width` children in flight; each completion
+                // hands out the next job (files are one job, so ordering
+                // within the group does not affect the phase-3 walk).
+                while next < min(width, jobs.count) { add(next); next += 1 }
+                var out = Array<ExportOutcome?>(repeating: nil, count: jobs.count)
+                for await (i, outcome) in group {
+                    out[i] = outcome
+                    if next < jobs.count { add(next); next += 1 }
+                }
+                return out.map { $0 ?? ExportOutcome(error: ExportOutcomeMissing()) }
+            }
+            box.values = results
+            sem.signal()
+        }
+        sem.wait()
+        return box.values
     }
 
     /// A destination inside `dir` that does not exist yet: `name`, then
