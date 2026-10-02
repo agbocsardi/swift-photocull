@@ -87,6 +87,38 @@ public enum Finalize {
 
         var archived = 0, trashed = 0, dumped = 0, cropped = 0
 
+        // ── Three phases (perf wave 3, B1) ─────────────────────────────────
+        //
+        // PHASE 1 (serial, exact scan order): decide reject/keep per pair and
+        // allocate EVERY destination up front — dump dst, archive jpgDst and
+        // rawDst via collisionFreeDestination. Destination allocation must
+        // stay serial: collisionFreeDestination probes the filesystem with
+        // fileExists(), and under concurrency two workers can probe the same
+        // not-yet-written name, both see "free", and the second write clobbers
+        // the first. Rejects are trashed immediately (a cheap move, and the
+        // order stays deterministic). Unedited keepers dump via copyItem right
+        // here — it is an APFS clone at ~0.1 ms, parallelizing buys nothing.
+        // Only cropped keepers queue an export job.
+        //
+        // PHASE 2 (parallel, width = active core count): cropped exports via
+        // ImagePipeline.export, each written to "<dst>.tmp" first and renamed
+        // into place on success — a failed or cancelled encode then never
+        // leaves a truncated dump file behind. All outcomes are collected;
+        // nothing throws here.
+        //
+        // PHASE 3 (serial, original order): the archive moves, stopping at the
+        // first pair whose export failed. This reproduces the old serial
+        // fail-fast exactly: every pair before the failure is fully dumped and
+        // archived, the failing pair and all later pairs keep their files in
+        // the inbox, and the first error is thrown. Counters report what
+        // actually happened. (Known trade-off of phase-1 immediacy: unedited
+        // keepers after a failure already have their dump clone; a re-run
+        // re-dumps what remains in the inbox under collision-free names.)
+
+        var plans: [Plan] = []
+        var jobs: [ExportJob] = []
+
+        // PHASE 1
         for pair in pairs {
             switch session.get(pair.stem) {
             case .reject:
@@ -97,6 +129,7 @@ public enum Finalize {
                     trashed += 1
                 }
             default:  // keep and undecided are treated the same
+                var jobIndex: Int?
                 if dump {
                     let dst = collisionFreeDestination(for: pair.jpg, in: dumpFolder)
                     let crop = cropMode == .applyCrop ? session.crop(for: pair.stem) : nil
@@ -104,23 +137,47 @@ public enum Finalize {
                     let turns = cropMode == .applyCrop ? session.quarterTurns(for: pair.stem) : 0
                     let hasCrop = crop.map { !$0.isFullFrame } ?? false
                     if hasCrop || tilt != 0 || turns != 0 {
-                        try ImagePipeline.export(src: pair.jpg, crop: crop, to: dst,
-                                                 quality: 0.9, tilt: tilt, quarterTurns: turns)
-                        cropped += 1
+                        jobIndex = jobs.count
+                        jobs.append(ExportJob(src: pair.jpg, dst: dst, crop: crop,
+                                              tilt: tilt, turns: turns))
                     } else {
-                        try fm.copyItem(at: pair.jpg, to: dst)
+                        try fm.copyItem(at: pair.jpg, to: dst)  // APFS clone
+                        dumped += 1
                     }
-                    dumped += 1
                 }
                 let jpgDst = collisionFreeDestination(for: pair.jpg, in: archiveFolder)
-                try fm.moveItem(at: pair.jpg, to: jpgDst)
-                archived += 1
+                var rawDst: URL?
                 if let raw = pair.raw {
-                    let rawDst = collisionFreeDestination(for: raw, in: archiveFolder)
-                    try fm.moveItem(at: raw, to: rawDst)
-                    archived += 1
+                    rawDst = collisionFreeDestination(for: raw, in: archiveFolder)
                 }
+                plans.append(Plan(jpg: pair.jpg, jpgDst: jpgDst,
+                                  raw: pair.raw, rawDst: rawDst, jobIndex: jobIndex))
             }
+        }
+
+        // PHASE 2
+        let outcomes = exportAllParallel(jobs: jobs)
+
+        // PHASE 3
+        var firstFailure: Error?
+        for plan in plans {
+            if let idx = plan.jobIndex {
+                if let error = outcomes[idx].error {
+                    firstFailure = error
+                    break
+                }
+                dumped += 1
+                cropped += 1
+            }
+            try fm.moveItem(at: plan.jpg, to: plan.jpgDst)
+            archived += 1
+            if let raw = plan.raw, let rawDst = plan.rawDst {
+                try fm.moveItem(at: raw, to: rawDst)
+                archived += 1
+            }
+        }
+        if let firstFailure {
+            throw firstFailure
         }
 
         for raw in orphanRAWs {
@@ -197,6 +254,85 @@ public enum Finalize {
     /// Absolute inbox folder URL for a date.
     static func inboxFolder(cfg: PCConfig, date: String) throws -> URL {
         URL(fileURLWithPath: PCConfig.expandHome(cfg.paths.inbox)).appendingPathComponent(date)
+    }
+
+    /// One cropped export queued by phase 1, executed in phase 2.
+    private struct ExportJob: Sendable {
+        let src: URL
+        let dst: URL
+        let crop: CropRect?
+        let tilt: Double
+        let turns: Int
+    }
+
+    /// Per-pair phase-3 plan: where the archive moves go, and which export
+    /// job (if any) must have succeeded before they may run.
+    private struct Plan {
+        let jpg: URL
+        let jpgDst: URL
+        let raw: URL?
+        let rawDst: URL?
+        let jobIndex: Int?
+    }
+
+    /// Per-export outcome. Boxes the error in a class so results cross task
+    /// boundaries without sending `any Error` values between tasks.
+    private final class ExportOutcome: @unchecked Sendable {
+        let error: Error?
+        init(error: Error?) { self.error = error }
+    }
+
+    /// Unreachable placeholder: every child returns an outcome, even on error.
+    private struct ExportOutcomeMissing: Error {}
+
+    /// Run cropped exports `jobs` on a TaskGroup capped at the active core
+    /// count (measured 3.1–3.7× over serial at width 8). Each export writes to
+    /// "<dst>.tmp" and renames into place on success, so a failed encode never
+    /// leaves a truncated dump file. Returns one outcome per job, aligned with
+    /// the input; errors are reported, never thrown. The group runs on a
+    /// detached task and the synchronous caller waits on a semaphore — `run`
+    /// stays a synchronous API (AppState and the CLI call it directly).
+    private static func exportAllParallel(jobs: [ExportJob]) -> [ExportOutcome] {
+        final class ResultsBox: @unchecked Sendable { var values: [ExportOutcome] = [] }
+        let box = ResultsBox()
+        let sem = DispatchSemaphore(value: 0)
+        let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
+        Task.detached(priority: .userInitiated) {
+            let results = await withTaskGroup(of: (Int, ExportOutcome).self,
+                                              returning: [ExportOutcome].self) { group in
+                var next = 0
+                func add(_ i: Int) {
+                    let job = jobs[i]
+                    group.addTask {
+                        let tmp = job.dst.appendingPathExtension("tmp")
+                        do {
+                            try ImagePipeline.export(src: job.src, crop: job.crop, to: tmp,
+                                                     quality: 0.9, tilt: job.tilt,
+                                                     quarterTurns: job.turns)
+                            try FileManager.default.moveItem(at: tmp, to: job.dst)
+                            return (i, ExportOutcome(error: nil))
+                        } catch {
+                            try? FileManager.default.removeItem(at: tmp)
+                            return (i, ExportOutcome(error: error))
+                        }
+                    }
+                }
+                // Keep exactly `width` children in flight; each completion
+                // hands out the next job (files are one job, so ordering
+                // within the group does not affect the phase-3 walk).
+                while next < min(width, jobs.count) { add(next); next += 1 }
+                var out = Array<ExportOutcome?>(repeating: nil, count: jobs.count)
+                for await (i, outcome) in group {
+                    out[i] = outcome
+                    if next < jobs.count { add(next); next += 1 }
+                }
+                return out.map { $0 ?? ExportOutcome(error: ExportOutcomeMissing()) }
+            }
+            box.values = results
+            sem.signal()
+        }
+        sem.wait()
+        return box.values
     }
 
     /// A destination inside `dir` that does not exist yet: `name`, then
