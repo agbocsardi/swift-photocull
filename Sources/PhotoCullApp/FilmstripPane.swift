@@ -9,10 +9,11 @@ struct FilmstripPane: View {
         VStack(spacing: 0) {
             SectionHeader(text: "Filmstrip", number: 4,
                           focused: app.focusedPane == .filmstrip,
-                          trailing: AnyView(
+                          trailing: {
                 Text(app.pairs.isEmpty ? "" : "\(app.index + 1) of \(app.pairs.count)")
                     .font(Typo.number)
-                    .foregroundStyle(Palette.tertiary)))
+                    .foregroundStyle(Palette.tertiary)
+            })
 
             if app.pairs.isEmpty {
                 EmptyState(icon: "film",
@@ -36,6 +37,7 @@ struct FilmstripPane: View {
                                           decision: app.decision(for: pair.stem),
                                           crop: app.crop(for: pair.stem),
                                           isCurrent: i == app.index,
+                                          onSelect: { app.setIndex(i) },
                                           thumbs: app.thumbs)
                             }
                         }
@@ -56,12 +58,14 @@ struct FilmstripPane: View {
 /// One thumbnail. Current photo gets an accent ring; state is shown with a
 /// small badge rather than recolouring the whole cell.
 private struct ThumbCell: View {
-    @EnvironmentObject var app: AppState
     let pair: FilePair
     let index: Int
     let decision: Decision
     let crop: CropRect?
     let isCurrent: Bool
+    /// Tap handler passed down by the pane, so cells don't subscribe to the
+    /// app-wide object for a single method call.
+    let onSelect: () -> Void
     @ObservedObject var thumbs: ThumbnailStore
 
     @StateObject private var hover = ViewState(false)
@@ -134,7 +138,7 @@ private struct ThumbCell: View {
                                             : (hover.value ? Palette.secondary : Palette.separator),
                                   lineWidth: isCurrent ? 2 : 0.5)
             )
-            .shadowSubtle()
+            .shadowSubtle(isCurrent || hover.value)
             .scaleEffect(isCurrent ? 1.0 : (hover.value ? 1.02 : 1.0))
             .animation(Motion.fast, value: hover.value)
             .animation(Motion.fast, value: isCurrent)
@@ -148,7 +152,7 @@ private struct ThumbCell: View {
         }
         .contentShape(Rectangle())
         .onHover { hover.value = $0 }
-        .onTapGesture { app.setIndex(index) }
+        .onTapGesture { onSelect() }
         .help("\(pair.stem).JPG")
         // Reload when this slot's photo changes. Cell identity is the photo's
         // full URL (see the ForEach above), so a session switch rebuilds every

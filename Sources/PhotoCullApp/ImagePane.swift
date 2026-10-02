@@ -8,37 +8,85 @@ struct ImagePane: View {
     @EnvironmentObject var app: AppState
     /// Keyboard focus on the tilt slider: arrows then nudge tilt.
     @FocusState private var tiltFocused: Bool
+    /// 1-slot memo for the CPU edit pipeline (see `memoizedDisplayImage`).
+    @StateObject private var memo = EditMemo()
 
-    /// What the pane actually draws. This is the exact edit pipeline the
-    /// export runs (quarter turn → tilt → crop), so preview == output.
-    /// Crop mode edits show the working tilt against the full frame.
-    private var displayImage: CGImage? {
-        guard var img = app.imageLoader.current else { return nil }
+    /// Everything the CPU-rendered bitmap depends on. In crop mode the CPU
+    /// path stops after the quarter turn — live tilt is a GPU transform —
+    /// so the key deliberately reads the CPU tilt/crop as unused there and
+    /// slider ticks leave the memo valid.
+    private struct EditKey: Equatable {
+        var image: ObjectIdentifier?
+        var quarterTurns: Int
+        var cpuTilt: Double
+        var crop: CropRect?
+        var cropMode: Bool
+        var showCroppedPreview: Bool
+    }
+
+    private final class EditMemo: ObservableObject {
+        var key: EditKey?
+        var image: CGImage?
+    }
+
+    /// What the pane draws: the exact edit pipeline the export runs
+    /// (quarter turn → tilt → crop), so preview == output. Memoized to a
+    /// single slot keyed on the pipeline inputs, so body evaluations that
+    /// change nothing the bitmap depends on (pan/zoom drags, hover, toasts)
+    /// reuse the previous CGImage instead of resampling ~45 MB per frame.
+    /// In crop mode the CPU work stops after the quarter turn; the live tilt
+    /// renders on the GPU (see body). Committing leaves crop mode, which
+    /// changes the key and runs the real CPU pipeline once for the settled
+    /// state — keeping at-rest pixels identical to the export.
+    private func memoizedDisplayImage() -> CGImage? {
+        guard let current = app.imageLoader.current else {
+            if memo.key != nil { memo.key = nil; memo.image = nil }
+            return nil
+        }
+        let cropMode = app.cropMode
+        let cpuTilt = cropMode ? 0 : app.currentTilt
+        var crop: CropRect?
+        if !cropMode, app.showCroppedPreview, let c = app.currentCrop, !c.isFullFrame {
+            crop = c
+        }
+        let key = EditKey(image: ObjectIdentifier(current),
+                          quarterTurns: app.currentQuarterTurns,
+                          cpuTilt: cpuTilt,
+                          crop: crop,
+                          cropMode: cropMode,
+                          showCroppedPreview: app.showCroppedPreview)
+        if memo.key == key, let cached = memo.image { return cached }
+
+        var img = current
         if app.currentQuarterTurns != 0 {
             img = ImagePipeline.rotateQuarter(img, turns: app.currentQuarterTurns)
         }
-        let tilt = app.cropMode ? app.cropTilt : app.currentTilt
-        if tilt != 0 {
-            img = ImagePipeline.rotateToFill(img, degrees: tilt)
+        if cpuTilt != 0 {
+            img = ImagePipeline.rotateToFill(img, degrees: cpuTilt)
         }
-        if app.cropMode { return img }
-        if app.showCroppedPreview, let crop = app.currentCrop, !crop.isFullFrame {
-            return ImagePipeline.crop(img, to: crop) ?? img
+        if let crop {
+            img = ImagePipeline.crop(img, to: crop) ?? img
         }
+        memo.key = key
+        memo.image = img
         return img
     }
 
     var body: some View {
         VStack(spacing: 0) {
+            // Evaluate the pipeline exactly once per body; both the canvas
+            // and the action-bar visibility below reuse this.
+            let cg = memoizedDisplayImage()
+
             SectionHeader(text: "Canvas", number: 2,
                           focused: app.focusedPane == .image,
-                          trailing: AnyView(trailing))
+                          trailing: { trailing })
 
             ZStack {
                 // Opaque canvas: content areas should not be translucent.
                 Color(nsColor: .underPageBackgroundColor)
 
-                if let cg = displayImage {
+                if let cg {
                     GeometryReader { geo in
                         let container = geo.size
                         let base = fitSize(CGSize(width: cg.width, height: cg.height), into: container)
@@ -48,12 +96,18 @@ struct ImagePane: View {
                             y: (container.height - shown.height) / 2 + app.pan.height)
 
                         ZStack(alignment: .topLeading) {
-                            Image(decorative: cg, scale: 1)
-                                .resizable()
-                                .interpolation(app.zoom > 1.5 ? .none : .high)
-                                .frame(width: shown.width, height: shown.height)
-                                .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
-                                .offset(x: origin.x, y: origin.y)
+                            if app.cropMode {
+                                liveTiltImage(cg: cg, shown: shown, origin: origin)
+                            } else {
+                                Image(decorative: cg, scale: 1)
+                                    .resizable()
+                                    .interpolation(app.zoom > 1.5 ? .none : .high)
+                                    .frame(width: shown.width, height: shown.height)
+                                    // Peak interaction cost: skip the
+                                    // full-canvas Gaussian while cropping.
+                                    .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+                                    .offset(x: origin.x, y: origin.y)
+                            }
 
                             if app.cropMode {
                                 CropOverlay(
@@ -102,7 +156,7 @@ struct ImagePane: View {
                 }
 
                 // Floating action bar, previews only.
-                if displayImage != nil, !app.cropMode {
+                if cg != nil, !app.cropMode {
                     VStack {
                         Spacer()
                         FloatingActionBar()
@@ -125,6 +179,25 @@ struct ImagePane: View {
                 app.tiltFocused = false
             }
         }
+    }
+
+    /// GPU live tilt for crop mode: draws the memoized (quarter-turned)
+    /// base image, then scales by the shared cover factor and rotates —
+    /// Core Animation work, no CPU resample per 0.25° tick. The uniform
+    /// fit-scale into `shown` commutes with the rotate+cover transform, so
+    /// this fills the same `shown` rect the CPU `rotateToFill` output
+    /// would, and `CropOverlay`'s `imageRect` mapping stays correct.
+    private func liveTiltImage(cg: CGImage, shown: CGSize, origin: CGPoint) -> some View {
+        Image(decorative: cg, scale: 1)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: shown.width, height: shown.height)
+            .scaleEffect(CGFloat(ImagePipeline.coverScale(
+                width: Double(shown.width), height: Double(shown.height),
+                degrees: app.cropTilt)))
+            .rotationEffect(.degrees(app.cropTilt))
+            .clipped()
+            .offset(x: origin.x, y: origin.y)
     }
 
     /// Floating tilt control under the canvas while crop mode is open.

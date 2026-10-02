@@ -10,7 +10,7 @@ struct InfoPane: View {
         VStack(spacing: 0) {
             SectionHeader(text: "Info", number: 3,
                           focused: app.focusedPane == .info,
-                          trailing: AnyView(
+                          trailing: {
                 Button {
                     app.toggleInspector()
                 } label: {
@@ -19,7 +19,7 @@ struct InfoPane: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Palette.tertiary)
                 .help("Hide the inspector (⌘I)")
-            ))
+            })
 
             if app.currentPair == nil {
                 EmptyState(icon: "info.circle",

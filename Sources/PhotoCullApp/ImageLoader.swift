@@ -7,7 +7,7 @@ final class ImageLoader: ObservableObject {
     @Published private(set) var current: CGImage?
     @Published private(set) var isLoading = false
 
-    private let cache = ImageCache(capacity: 16)
+    private let cache = ImageCache(capacity: 16, byteBudget: 512 * 1024 * 1024)
     private var generation = 0
 
     /// Load `url` at `maxPixel`, discarding any older in-flight request.
@@ -24,6 +24,11 @@ final class ImageLoader: ObservableObject {
         }
         isLoading = true
         Task.detached(priority: .userInitiated) {
+            // Early-out before the heavy decode when a newer navigation has
+            // already superseded this one, so rapid j/k doesn't pile up
+            // stale 24–48 MP decodes that each run to completion.
+            let stale = await MainActor.run { gen != self.generation }
+            guard !stale else { return }
             let img = ImagePipeline.load(url: url, maxPixel: maxPixel)
             await MainActor.run {
                 guard gen == self.generation else { return }
@@ -38,8 +43,14 @@ final class ImageLoader: ObservableObject {
     func prefetch(urls: [URL], maxPixel: Int) {
         let missing = urls.filter { cache.image(for: ImageCache.key(url: $0, maxPixel: maxPixel)) == nil }
         guard !missing.isEmpty else { return }
+        let gen = generation
         Task.detached(priority: .utility) {
             for url in missing {
+                // Same staleness check per URL: once a navigation bumps the
+                // generation, the remaining old neighbours are not worth
+                // decoding, so stop as early as possible.
+                let stale = await MainActor.run { gen != self.generation }
+                if stale { break }
                 let key = ImageCache.key(url: url, maxPixel: maxPixel)
                 if let img = ImagePipeline.load(url: url, maxPixel: maxPixel) {
                     await MainActor.run { self.cache.store(img, for: key) }
@@ -64,8 +75,12 @@ final class ThumbnailStore: ObservableObject {
     /// once entries get evicted.
     @Published private(set) var generation = 0
 
-    private let cache = ImageCache(capacity: 512)
+    private let cache = ImageCache(capacity: 512, byteBudget: 128 * 1024 * 1024)
     private var inFlight: Set<String> = []
+    /// True while a `generation` bump is queued for this runloop tick, so a
+    /// burst of thumbnail arrivals (a ~150-photo session mount) coalesces to
+    /// at most one announcement per tick instead of one per arrival.
+    private var announceScheduled = false
     /// Keys whose decode returned nil, so cells show a failure mark instead
     /// of spinning forever. Not retried within this run; a repaired file is
     /// picked up after an app relaunch (or a future `clear()` call site).
@@ -87,10 +102,21 @@ final class ThumbnailStore: ObservableObject {
                 } else {
                     self.failed.insert(key)
                 }
-                self.generation += 1
+                self.scheduleAnnounce()
             }
         }
         return nil
+    }
+
+    /// Queue one `generation` bump for this runloop tick, collapsing any
+    /// further arrivals before it fires. `clear()` still announces directly.
+    private func scheduleAnnounce() {
+        guard !announceScheduled else { return }
+        announceScheduled = true
+        Task { @MainActor in
+            self.announceScheduled = false
+            self.generation += 1
+        }
     }
 
     func cached(for url: URL) -> CGImage? {

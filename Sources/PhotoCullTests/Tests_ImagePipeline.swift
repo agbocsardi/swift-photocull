@@ -232,4 +232,30 @@ func suiteImagePipeline() throws {
     check(mismatches.isEmpty, "cache never returns a wrong image under concurrent access")
     let present = (0..<16).filter { conc.image(for: "k\($0)") != nil }
     check(present.count <= 8, "capacity respected after concurrent stores (got \(present.count))")
+
+    // --- coverScale: shared by CPU rotateToFill and the GPU live-tilt preview ---
+    checkEqual(ImagePipeline.coverScale(width: 100, height: 100, degrees: 0), 1.0,
+               "coverScale at 0° is 1")
+    checkClose(ImagePipeline.coverScale(width: 100, height: 100, degrees: 45),
+               2.0.squareRoot(), 1e-9, "coverScale square at 45° is √2")
+    checkClose(ImagePipeline.coverScale(width: 300, height: 200, degrees: 90),
+               1.5, 1e-9, "coverScale 300x200 at 90° is 1.5")
+
+    // --- rotateToFill: same-size output contract on a non-square input ---
+    let nonsquare = makeTestImage(width: 120, height: 80)
+    let tilted = ImagePipeline.rotateToFill(nonsquare, degrees: 10)
+    checkEqual(tilted.width, nonsquare.width, "rotateToFill keeps width at 10°")
+    checkEqual(tilted.height, nonsquare.height, "rotateToFill keeps height at 10°")
+
+    // --- ImageCache: byte budget evicts LRU-first, never the newest entry ---
+    // blocks is 100x50 RGBA = 20,000 bytes.
+    let budgeted = ImageCache(capacity: 8, byteBudget: 30_000)
+    budgeted.store(blocks, for: "big-a")
+    budgeted.store(blocks, for: "big-b")
+    check(budgeted.image(for: "big-a") == nil, "byte budget evicts LRU entry past budget")
+    check(budgeted.image(for: "big-b") === blocks, "byte budget keeps the newest entry")
+    let solo = ImageCache(capacity: 4, byteBudget: 1)
+    solo.store(blocks, for: "one")
+    check(solo.image(for: "one") === blocks,
+          "single entry survives even when it alone exceeds the byte budget")
 }
