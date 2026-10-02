@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import Combine
 import PhotoCullCore
 
 enum Pane: Int, CaseIterable {
@@ -152,13 +151,14 @@ final class AppState: ObservableObject {
     /// folders; a second concurrent run would race it.
     @Published private(set) var finalizeRunning = false
 
+    // Views must observe the loader via environmentObject, not through app —
+    // forwarding its changes here re-invalidated the whole window per decode.
     let imageLoader = ImageLoader()
     let thumbs = ThumbnailStore()
 
     private var toastTask: Task<Void, Never>?
     /// Debounced sidecar write for navigation (trailing edge, ~500 ms).
     private var persistTask: Task<Void, Never>?
-    private var cancellables = Set<AnyCancellable>()
     private static let appearanceKey = "PhotoCull.appearance"
 
     private func applyAppearance() {
@@ -174,12 +174,6 @@ final class AppState: ObservableObject {
         let saved = UserDefaults.standard.string(forKey: Self.appearanceKey) ?? "system"
         appearance = AppAppearance(rawValue: saved) ?? .system
         applyAppearance()
-
-        // ImageLoader owns its own @Published state, so views observing AppState
-        // would never see a decoded photo arrive. Re-emit its changes.
-        imageLoader.objectWillChange
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
 
         // No SD-card scan here: `detectSDCards` stats /Volumes/*/DCIM, and a
         // stale network mount can stall the first frame for seconds.
@@ -297,11 +291,13 @@ final class AppState: ObservableObject {
     }
 
     /// Full-resolution target for decoding: big enough to crop from, bounded
-    /// for memory. Uses the EXIF block `loadCurrent` already read — no second
-    /// disk read per navigation.
+    /// for memory. Capped at 3072 because ImageIO decode cost has a cliff
+    /// above ~half native size (measured on a 26 MP file: 91 ms at 3072 vs
+    /// 197 ms at 4096); 3072 also shrinks a cache slot 45→25 MB. Uses the
+    /// EXIF block `loadCurrent` already read — no second disk read.
     var currentMaxPixel: Int {
         let longest = max(info.pixelWidth, info.pixelHeight)
-        return longest > 0 ? min(longest, 4096) : 4096
+        return longest > 0 ? min(longest, 3072) : 3072
     }
 
     /// Sidecar write for the open session. Rare/immediate path — navigation
@@ -571,11 +567,6 @@ final class AppState: ObservableObject {
 
     func zoomIn() { zoom = min(zoom * 1.25, 8) }
     func zoomOut() { zoom = max(zoom / 1.25, 0.1) }
-    func zoomActual() { zoom = 1; pan = .zero }
-
-    func panBy(dx: CGFloat, dy: CGFloat) {
-        pan = CGSize(width: pan.width + dx, height: pan.height + dy)
-    }
 
     // MARK: - Selection + filter
 
@@ -639,9 +630,15 @@ final class AppState: ObservableObject {
 
     func beginFinalizeCurrent() {
         guard let date = activeDate else { return }
+        beginFinalize(date: date)
+    }
+
+    /// Same detached-summary + publish pattern as `beginGlobalFinalize`, for a
+    /// single arbitrary session (context menu). `Finalize.summary` walks the
+    /// folder + parses the sidecar — keep it off the main thread so the sheet
+    /// opens without a stall.
+    func beginFinalize(date: String) {
         let cfg = self.cfg
-        // `Finalize.summary` walks the folder + parses the sidecar — keep it
-        // off the main thread so the sheet opens without a stall.
         Task.detached(priority: .userInitiated) {
             do {
                 let stats = try Finalize.summary(cfg: cfg, date: date)

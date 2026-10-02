@@ -147,6 +147,7 @@ struct ContentView: View {
 /// Thin bottom bar: key hints on the left, inbox location on the right.
 struct StatusBar: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var loader: ImageLoader
 
     private var hints: [(String, String)] {
         if app.cropMode {
@@ -169,7 +170,7 @@ struct StatusBar: View {
                 }
             }
             Spacer(minLength: 8)
-            if app.imageLoader.isLoading {
+            if loader.isLoading {
                 ProgressView().controlSize(.mini).scaleEffect(0.55)
             }
             Text(app.cfg.paths.inbox.replacingOccurrences(of: NSHomeDirectory(), with: "~"))

@@ -6,6 +6,7 @@ import PhotoCullCore
 /// the numbered keyboard map stays coherent.
 struct ImagePane: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var loader: ImageLoader
     /// Keyboard focus on the tilt slider: arrows then nudge tilt.
     @FocusState private var tiltFocused: Bool
     /// 1-slot memo for the CPU edit pipeline (see `memoizedDisplayImage`).
@@ -39,7 +40,7 @@ struct ImagePane: View {
     /// changes the key and runs the real CPU pipeline once for the settled
     /// state — keeping at-rest pixels identical to the export.
     private func memoizedDisplayImage() -> CGImage? {
-        guard let current = app.imageLoader.current else {
+        guard let current = loader.current else {
             if memo.key != nil { memo.key = nil; memo.image = nil }
             return nil
         }
@@ -141,8 +142,25 @@ struct ImagePane: View {
                                 }
                         )
                     }
-                } else if app.imageLoader.isLoading {
-                    ProgressView().controlSize(.small)
+                } else if loader.isLoading {
+                    // Instant placeholder: the filmstrip's 256 px thumb while
+                    // the full decode runs — perceived miss latency ≈ 0.
+                    // Falls back to the spinner when the LRU evicted it or
+                    // the session's thumbs haven't decoded yet. Read the
+                    // thumb ONLY here, never in the `cg != nil` path above:
+                    // `cached(for:)` locks the 512-slot LRU on every body.
+                    if let pair = app.currentPair, let ph = app.thumbs.cached(for: pair.jpg) {
+                        Image(decorative: ph, scale: 1)
+                            .resizable()
+                            .scaledToFit()
+                            .rotationEffect(.degrees(Double(app.currentQuarterTurns) * 90))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(Metric.canvasPad)
+                            .opacity(0.9)
+                            .transition(.opacity)
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
                 } else if app.activeDate == nil {
                     EmptyState(icon: "photo.on.rectangle.angled",
                                title: "No session selected",
@@ -169,6 +187,8 @@ struct ImagePane: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Crossfade the real decode in over the thumb placeholder.
+            .animation(Motion.fast, value: loader.isLoading)
         }
         .background(Surface.chrome)
         .animation(Motion.normal, value: app.cropMode)
