@@ -22,20 +22,20 @@ struct FilmstripPane: View {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: Metric.elementGap) {
-                            ForEach(Array(app.pairs.enumerated()), id: \.element.stem) { i, pair in
+                            ForEach(Array(app.pairs.enumerated()), id: \.element.jpg) { i, pair in
                                 ThumbCell(pair: pair, index: i,
                                           decision: app.decision(for: pair.stem),
                                           crop: app.crop(for: pair.stem),
                                           isCurrent: i == app.index,
                                           thumbs: app.thumbs)
-                                    .id(i)
                             }
                         }
                         .padding(.horizontal, Metric.paneInset)
                         .padding(.bottom, Metric.elementGap)
                     }
                     .onChange(of: app.index) { _, new in
-                        withAnimation(Motion.fast) { proxy.scrollTo(new, anchor: .center) }
+                        guard app.pairs.indices.contains(new) else { return }
+                        withAnimation(Motion.fast) { proxy.scrollTo(app.pairs[new].jpg, anchor: .center) }
                     }
                 }
             }
@@ -136,9 +136,9 @@ private struct ThumbCell: View {
         .onHover { hover.value = $0 }
         .onTapGesture { app.setIndex(index) }
         .help("\(pair.stem).JPG")
-        // `.task(id:)` reloads when the slot's photo changes — cells keep their
-        // index identity across session switches, so `.onAppear` would never
-        // re-fire and the filmstrip would keep the previous session's spinners.
+        // Reload when this slot's photo changes. Cell identity is the photo's
+        // full URL (see the ForEach above), so a session switch rebuilds every
+        // cell and this runs fresh; it also covers in-place photo changes.
         .task(id: pair.jpg) { _ = thumbs.thumbnail(for: pair.jpg) }
     }
 }

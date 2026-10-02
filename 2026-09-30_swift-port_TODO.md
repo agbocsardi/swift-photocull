@@ -137,3 +137,10 @@ the current macOS setting. Restored the original unset preference before relaunc
   once per slot; after switching sessions the new photos never started loading and the
   filmstrip kept spinning. Latent since the filmstrip landed; surfaced by mouse session
   hopping. Fixed with `.task(id: pair.jpg)`. Committed bb56995.
+
+### 2026-10-02 (follow-up 2) — filmstrip identity fix, verified live
+
+- `.task(id: pair.jpg)` alone wasn't enough: cells were still identified by slot index
+  (`.id(i)` overrode the ForEach id), so lazy-stack reuse kept stale pictures. Cell identity
+  is now the photo's full URL (`id: \.element.jpg`, `.id(i)` removed; scrollTo follows).
+  Session switch now rebuilds every cell. User confirmed working in the live app.
