@@ -129,9 +129,16 @@ enum Motion {
 // MARK: - Layered shadows
 
 extension View {
-    /// Cards and buttons.
-    func shadowSubtle() -> some View {
-        shadow(color: .black.opacity(0.16), radius: 1, x: 0, y: 1)
+    /// Cards and buttons. `visible: false` drops the modifier entirely so
+    /// cheap frames (e.g. non-highlighted filmstrip cells) pay nothing.
+    func shadowSubtle(_ visible: Bool = true) -> some View {
+        Group {
+            if visible {
+                shadow(color: .black.opacity(0.16), radius: 1, x: 0, y: 1)
+            } else {
+                self
+            }
+        }
     }
 
     /// Popovers, dropdowns, the floating action bar.
@@ -369,11 +376,21 @@ struct InspectorRow<Content: View>: View {
 }
 
 /// Section header in the small-caps style used by native sidebars and inspectors.
-struct SectionHeader: View {
+/// Generic trailing content (instead of `AnyView`) keeps structural diffing
+/// working across the four panes.
+struct SectionHeader<Trailing: View>: View {
     let text: String
     var number: Int?
-    var focused: Bool = false
-    var trailing: AnyView?
+    var focused: Bool
+    var trailing: Trailing
+
+    init(text: String, number: Int? = nil, focused: Bool = false,
+         @ViewBuilder trailing: () -> Trailing) {
+        self.text = text
+        self.number = number
+        self.focused = focused
+        self.trailing = trailing()
+    }
 
     var body: some View {
         HStack(spacing: Metric.elementGap - 2) {
@@ -383,11 +400,17 @@ struct SectionHeader: View {
                 .tracking(0.4)
                 .foregroundStyle(focused ? Palette.label : Palette.secondary)
             Spacer(minLength: 0)
-            if let trailing { trailing }
+            trailing
         }
         .padding(.horizontal, Metric.paneInset)
         .padding(.top, Metric.paneInset)
         .padding(.bottom, Metric.paneInset - 4)
+    }
+}
+
+extension SectionHeader where Trailing == EmptyView {
+    init(text: String, number: Int? = nil, focused: Bool = false) {
+        self.init(text: text, number: number, focused: focused) { EmptyView() }
     }
 }
 

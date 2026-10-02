@@ -11,7 +11,7 @@ struct SessionsPane: View {
         VStack(spacing: 0) {
             SectionHeader(text: "Sessions", number: 1,
                           focused: app.focusedPane == .sessions,
-                          trailing: AnyView(trailing))
+                          trailing: { trailing })
 
             if app.visibleSessions.isEmpty {
                 EmptyState(icon: "photo.stack",
@@ -27,7 +27,6 @@ struct SessionsPane: View {
                         LazyVStack(spacing: 1) {
                             ForEach(app.visibleSessions) { row in
                                 SessionRowView(row: row)
-                                    .id(row.date)
                             }
                         }
                         .padding(.horizontal, 4)
