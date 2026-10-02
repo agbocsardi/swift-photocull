@@ -14,11 +14,13 @@ Branch: `performance`. Audit report: `docs/performance-audit.md`.
   - [x] misc: main-thread IO, ingest/finalize responsiveness, KeyMonitor, startup
 - [x] Integrate findings into ranked audit doc → `docs/performance-audit.md`
 - [ ] Implement top fixes (ranked by impact/effort)
-  - [ ] perf-view agent: GPU tilt + memoization + view scoping (branch `perf-view`)
-  - [ ] perf-state agent: main-thread IO + threading (branch `perf-state`)
-  - [ ] Integrate both branches onto `performance`, resolve fallout
+  - [x] perf-view agent: GPU tilt + memoization + view scoping (branch `perf-view`, 8d338f1, merged)
+  - [x] perf-state agent: main-thread IO + threading (branch `perf-state`, 8813f37, merged, 350/350)
+  - [x] Integrate both branches onto `performance`, resolve fallout (clean — disjoint files)
 
-- [ ] Re-verify: 348 checks pass, snapshot renders, live crop/tilt feels snappy
+- [x] Re-verify: 358 checks pass, `--check` green on real library, snapshot renders (2.5MB, non-blank), release bundle built
+- [ ] Live crop/tilt feel test by user
+- [ ] Close worktree workspaces wD (perf-view) / wE (perf-state) after user confirms
 - [ ] Update README/notes if user-facing behavior changed
 
 ## Log
@@ -48,3 +50,21 @@ Branch: `performance`. Audit report: `docs/performance-audit.md`.
   full CPU edit pipeline on every body evaluation (every drag/pan/zoom frame, main thread),
   plus `.shadow(radius: 12)` blurred per frame over the full-size photo.
 - Launched 4 read-only review sub-agents in parallel (zai/glm-5.3-flash).
+
+### 2026-10-02 (cont. 2) — both waves merged, verified
+
+- perf-state (8813f37): reviewed diff, merged (18c7855). refreshRows derivation mirrors
+  Library.loadSessions field-for-field; flush points at close/finalize/ingest; finalize
+  detached + guarded; checkPairing now Void (call sites ignore result). 350/350.
+- perf-view (8d338f1): reviewed diff, merged (f062f35). EditKey memo complete (image identity,
+  turns, cpuTilt=0-in-crop-mode by design, crop, cropMode, preview flag); GPU chain
+  frame→scaleEffect(coverScale)→rotationEffect→clipped→offset keeps CropOverlay geometry
+  contract; coverScale extraction is formula-identical to the old rotateToFill math; byte-budget
+  eviction never drops the just-stored entry. +8 checks.
+- Combined verification on `performance`: swift build clean, 358/358 checks, `--check` green
+  against the real library (decode 2048px in ~124ms, cache LRU intact), snapshot renders
+  (3024×1896, 2.5MB), release bundle rebuilt (dist/PhotoCull.app, 20:49).
+- Known accepted trade-offs: undo of an edit on a non-open session no longer live-updates that
+  sidebar row's `total` (sidecar still written; full rescans remain on ⌘R/ingest/finalize);
+  debounced persist can lose ≤500ms of remembered position on a hard kill.
+- Awaiting user live test; worktree workspaces wD/wE kept until confirmation.
