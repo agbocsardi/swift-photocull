@@ -118,3 +118,15 @@ Verified from the packaged release app: a saved Dark preference rendered dark wi
 snapshot override; after deleting that temporary preference, System rendered light to match
 the current macOS setting. Restored the original unset preference before relaunch.
 `swift run PhotoCullTests` passed all 326 checks.
+
+### 2026-10-02 — mouse parity for session selection
+
+- **Bug:** sidebar clicks didn't open sessions — single click only moved the invisible
+  keyboard cursor, and the double-tap gesture was attached *after* the single-tap, so the
+  single-tap recognizer won the race and double-click never reliably fired.
+- Fix: single click opens the session (= `Enter`); ⌘-click toggles multi-finalize selection
+  (= `Space`, native macOS idiom); broken double-tap removed.
+- Pane focus on click (= `1`–`4` keys) via simultaneous tap gestures on all four panes,
+  so ↑/↓ after a click act in the clicked pane.
+- Help sheet gained a Mouse column; README gained a Mouse section. 326 checks pass;
+  snapshot renders. Not yet verified by hand in a live session.

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import PhotoCullCore
 
 /// Sidebar: the list of inbox sessions. Uses native sidebar row styling —
@@ -137,9 +138,8 @@ private struct SessionRowView: View {
         )
         .contentShape(Rectangle())
         .onHover { hover.value = $0 }
-        .onTapGesture { app.cursorDate = row.date }
-        .onTapGesture(count: 2) { app.open(date: row.date) }
-        .help("\(row.date) — click to select, double-click to open")
+        .onTapGesture { handleRowClick() }
+        .help("\(row.date) — click to open, ⌘-click to select for multi-finalize")
         .contextMenu {
             Button("Open") { app.open(date: row.date) }
             Button("Finalize…") { app.finalizeStats = (try? [Finalize.summary(cfg: app.cfg, date: row.date)]) ?? []
@@ -148,6 +148,20 @@ private struct SessionRowView: View {
             Button(isSelected ? "Deselect" : "Select for Multi-Finalize") {
                 app.toggleSelection(row.date)
             }
+        }
+    }
+
+    /// Mouse parity with the keyboard: a plain click opens the session (Enter),
+    /// ⌘-click toggles it in the multi-finalize selection (Space) — the native
+    /// macOS multi-select idiom.
+    private func handleRowClick() {
+        let mods = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if mods.contains(.command) {
+            withAnimation(Motion.fast) { app.toggleSelection(row.date) }
+        } else if row.date == app.activeDate {
+            app.cursorDate = row.date
+        } else {
+            app.open(date: row.date)
         }
     }
 

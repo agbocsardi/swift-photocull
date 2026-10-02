@@ -10,15 +10,19 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             SessionsPane()
+                // Mouse parity with the 1–4 focus keys: clicking a pane focuses it.
+                .simultaneousGesture(TapGesture().onEnded { app.focusedPane = .sessions })
                 .navigationSplitViewColumnWidth(min: Metric.sidebarMin,
                                                 ideal: Metric.sidebarIdeal,
                                                 max: 340)
         } detail: {
             VStack(spacing: 0) {
                 ImagePane()
+                    .simultaneousGesture(TapGesture().onEnded { app.focusedPane = .image })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider().overlay(Palette.separator)
                 FilmstripPane()
+                    .simultaneousGesture(TapGesture().onEnded { app.focusedPane = .filmstrip })
                     .frame(height: Metric.filmstripHeight)
                 Divider().overlay(Palette.separator)
                 StatusBar()
@@ -26,6 +30,7 @@ struct ContentView: View {
             .background(Palette.window)
             .inspector(isPresented: $app.showInspector) {
                 InfoPane()
+                    .simultaneousGesture(TapGesture().onEnded { app.focusedPane = .info })
                     .inspectorColumnWidth(min: 220, ideal: Metric.inspectorWidth, max: 380)
             }
         }

@@ -102,6 +102,13 @@ struct HelpSheet: View {
         ("+ / −", "Zoom in / out"),
         ("0", "Fit to window"),
         ("Esc", "Cancel a crop, close, or clear the selection"),
+        ("click", "Same keys, by mouse — see below"),
+    ]
+    private let mouse: [(String, String)] = [
+        ("click", "Session opens · filmstrip jumps · pane takes focus"),
+        ("⌘ + click", "Multi-select a session (Space)"),
+        ("buttons", "Keep, reject, crop, zoom in the floating bar"),
+        ("right-click", "Session menu: open, finalize, select"),
     ]
     private let crop: [(String, String)] = [
         ("← ↑ ↓ →", "Move the crop region"),
@@ -115,12 +122,13 @@ struct HelpSheet: View {
 
     var body: some View {
         SheetShell(title: "Keyboard Shortcuts",
-                   subtitle: "Crop is non-destructive: originals are never modified.",
-                   width: 720) {
+                   subtitle: "Crop is non-destructive: originals are never modified. Every key action has a mouse equivalent.",
+                   width: 860) {
             HStack(alignment: .top, spacing: 16) {
                 column("Actions", actions)
                 column("Navigation", navigation)
                 column("Crop", crop)
+                column("Mouse", mouse)
             }
         } buttons: {
             Button("Done") { app.modal = nil }

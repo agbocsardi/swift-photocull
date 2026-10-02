@@ -144,6 +144,15 @@ inspect the interface from a terminal or an agent context.
 `a` cycles the aspect ratio, `r` resets to full frame, `p` toggles the cropped preview,
 `Enter` applies, `Esc` cancels.
 
+## Mouse
+
+Every keyboard action has a mouse path. Click a session in the sidebar to open it,
+`⌘`-click to mark it for multi-finalize (same as `Space`), click a filmstrip thumbnail
+to jump to a photo, and use the floating action bar over the photo for keep / reject /
+crop / zoom / Preview / Finder. Clicking any pane gives it focus (same as `1`–`4`),
+so `↑`/`↓` afterwards move the session cursor or the photo cursor accordingly.
+Right-click a session for open / finalize / multi-select.
+
 ## Crop is non-destructive
 
 A crop is stored as a normalised rectangle in `.photocull.json` next to the cull decisions.
