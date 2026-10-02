@@ -68,6 +68,14 @@ public enum Finalize {
     public static func run(cfg: PCConfig, date: String, dump: Bool,
                            cropMode: CropExportMode,
                            dumpOverride: URL?) throws -> FinalizeResult {
+        // App Nap guard: mark CPU+IO as user-initiated so macOS does not
+        // throttle the run, while still allowing idle *display* sleep
+        // (not idleSystemSleepDisabled).
+        let activity = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "PhotoCull finalize in progress")
+        defer { ProcessInfo.processInfo.endActivity(activity) }
+
         let fm = FileManager.default
         let folder = try inboxFolder(cfg: cfg, date: date)
         let archiveFolder = URL(fileURLWithPath: PCConfig.expandHome(cfg.paths.archive))

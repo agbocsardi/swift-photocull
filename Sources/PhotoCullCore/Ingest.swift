@@ -66,6 +66,14 @@ public enum Ingest {
     public static func run(cfg: PCConfig,
                            source: URL?,
                            onProgress: (@Sendable (IngestProgress) -> Void)?) throws -> IngestResult {
+        // App Nap guard: mark CPU+IO as user-initiated so macOS does not
+        // throttle the run, while still allowing idle *display* sleep
+        // (not idleSystemSleepDisabled).
+        let activity = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "PhotoCull ingest in progress")
+        defer { ProcessInfo.processInfo.endActivity(activity) }
+
         let inboxRoot = URL(fileURLWithPath: PCConfig.expandHome(cfg.paths.inbox))
         let fm = FileManager.default
         // Lock-protected progress: the serial planner and the parallel copy
