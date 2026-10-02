@@ -61,10 +61,17 @@ public final class Session {
     public var lastIndex: Int
     /// Keys are UPPERCASED stems. Empty when nothing is cropped.
     public var crops: [String: CropRect]
+    /// Fine straightening angle per stem, in degrees. Positive tilts the photo
+    /// clockwise on screen. Empty when nothing is tilted.
+    public var tilts: [String: Double]
+    /// Quarter turns per stem (1 = 90° clockwise on screen). Empty when none.
+    public var rotations: [String: Int]
 
-    public init(version: Int, decisions: [String: Decision], lastIndex: Int, crops: [String: CropRect]) {
+    public init(version: Int, decisions: [String: Decision], lastIndex: Int, crops: [String: CropRect],
+                tilts: [String: Double] = [:], rotations: [String: Int] = [:]) {
         self.version = version; self.decisions = decisions
         self.lastIndex = lastIndex; self.crops = crops
+        self.tilts = tilts; self.rotations = rotations
     }
 
     /// Fresh empty session (version 1, no decisions, lastIndex 0).
@@ -98,6 +105,8 @@ public final class Session {
             var decisions: [String: Decision]?
             var last_index: Int?
             var crops: [String: CropRect]?
+            var tilts: [String: Double]?
+            var rotations: [String: Int]?
         }
         guard let raw = try? JSONDecoder().decode(RawShape.self, from: data) else {
             return Session.fresh() // corrupt JSON must not crash
@@ -106,26 +115,31 @@ public final class Session {
         for (k, v) in raw.decisions ?? [:] { decisions[k.uppercased()] = v }
         var crops: [String: CropRect] = [:]
         for (k, v) in raw.crops ?? [:] { crops[k.uppercased()] = v }
+        var tilts: [String: Double] = [:]
+        for (k, v) in raw.tilts ?? [:] { tilts[k.uppercased()] = v }
+        var rotations: [String: Int] = [:]
+        for (k, v) in raw.rotations ?? [:] { rotations[k.uppercased()] = v }
         return Session(version: raw.version ?? 0,
                        decisions: decisions,
                        lastIndex: raw.last_index ?? 0,
-                       crops: crops)
+                       crops: crops,
+                       tilts: tilts,
+                       rotations: rotations)
     }
 
     /// Write to `folder/.photocull.json` with sorted keys and 2-space indent,
-    /// byte-compatible with Go's `json.MarshalIndent`. `crops` is included
+    /// byte-compatible with Go's `json.MarshalIndent`. `crops`, `tilts` and
+    /// `rotations` are additive keys the Go app ignores; each is included
     /// only when non-empty.
     public func save(folder: URL) throws {
-        var out = "{\n"
-        out += "  \"version\": \(version),\n"
-        out += "  \"decisions\": \(Self.decisionsJSON(decisions)),\n"
-        if crops.isEmpty {
-            out += "  \"last_index\": \(lastIndex)\n"
-        } else {
-            out += "  \"last_index\": \(lastIndex),\n"
-            out += "  \"crops\": \(Self.cropsJSON(crops))\n"
-        }
-        out += "}"
+        var parts: [String] = []
+        parts.append("  \"version\": \(version)")
+        parts.append("  \"decisions\": \(Self.decisionsJSON(decisions))")
+        parts.append("  \"last_index\": \(lastIndex)")
+        if !crops.isEmpty { parts.append("  \"crops\": \(Self.cropsJSON(crops))") }
+        if !tilts.isEmpty { parts.append("  \"tilts\": \(Self.tiltsJSON(tilts))") }
+        if !rotations.isEmpty { parts.append("  \"rotations\": \(Self.rotationsJSON(rotations))") }
+        let out = "{\n" + parts.joined(separator: ",\n") + "\n}"
         let url = folder.appendingPathComponent(Session.fileName)
         try out.data(using: .utf8)?.write(to: url)
     }
@@ -145,6 +159,29 @@ public final class Session {
     public func setCrop(_ stem: String, _ rect: CropRect?) {
         let key = stem.uppercased()
         if let rect { crops[key] = rect } else { crops.removeValue(forKey: key) }
+    }
+
+    public func tilt(for stem: String) -> Double {
+        tilts[stem.uppercased()] ?? 0
+    }
+
+    /// `nil` (or a near-zero angle) removes the entry.
+    public func setTilt(_ stem: String, _ degrees: Double?) {
+        let key = stem.uppercased()
+        guard let degrees, abs(degrees) >= 0.05 else { tilts.removeValue(forKey: key); return }
+        tilts[key] = degrees
+    }
+
+    public func quarterTurns(for stem: String) -> Int {
+        rotations[stem.uppercased()] ?? 0
+    }
+
+    /// `nil` (or a multiple of 4) removes the entry.
+    public func setQuarter(_ stem: String, _ turns: Int?) {
+        let key = stem.uppercased()
+        let normalized = ((turns ?? 0) % 4 + 4) % 4
+        guard normalized != 0 else { rotations.removeValue(forKey: key); return }
+        rotations[key] = normalized
     }
 
     /// (keep, reject, undecided) counts over the given stems.
@@ -224,6 +261,24 @@ public final class Session {
         var lines: [String] = []
         for key in crops.keys.sorted() {
             lines.append("    \"\(jsonEscape(key))\": \(cropJSON(crops[key]!))")
+        }
+        return "{\n" + lines.joined(separator: ",\n") + "\n  }"
+    }
+
+    static func tiltsJSON(_ tilts: [String: Double]) -> String {
+        if tilts.isEmpty { return "{}" }
+        var lines: [String] = []
+        for key in tilts.keys.sorted() {
+            lines.append("    \"\(jsonEscape(key))\": \(jsonNumber(tilts[key]!))")
+        }
+        return "{\n" + lines.joined(separator: ",\n") + "\n  }"
+    }
+
+    static func rotationsJSON(_ rotations: [String: Int]) -> String {
+        if rotations.isEmpty { return "{}" }
+        var lines: [String] = []
+        for key in rotations.keys.sorted() {
+            lines.append("    \"\(jsonEscape(key))\": \(rotations[key]!)")
         }
         return "{\n" + lines.joined(separator: ",\n") + "\n  }"
     }

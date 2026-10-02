@@ -176,3 +176,23 @@ the current macOS setting. Restored the original unset preference before relaunc
 - Snapshot band check (pixel stdev + per-slot fill, before vs after): identical content,
   12/12 viewport slots filled both builds. Intermittent-on-navigation bug needs live
   j/k verification. 326 checks pass.
+
+### 2026-10-02 (follow-up 5) — tilt + quarter-turn rotation
+
+- New per-photo edits beside crop: fine tilt (±45°, 0.25° steps) and quarter turns.
+  Sidecar gains additive `tilts` / `rotations` keys (Go ignores them); hand-rolled
+  JSON writer extended with a parts array.
+- ImagePipeline.rotateQuarter (reuses applyOrientation/EXIF 6/3/8) and rotateToFill
+  (rotate + cover-scale into the same canvas, no empty corners). export() runs
+  quarter → tilt → crop; the preview in ImagePane.displayImage runs the identical
+  path, so WYSIWYG holds by construction. Finalize re-encodes when any edit is set,
+  else still copies bytes untouched.
+- UI: , / . nudge tilt (⇧ = 1°), t resets; drag OUTSIDE the crop rect levels along
+  the horizon (atan2, snapped <0.4° to 0); rotate.left/right buttons persist
+  immediately. Header: live angle in crop mode, TILTED/ROTATED badges outside.
+- Rotation signs verified by pixel tests (red-quadrant centroid), not by trust —
+  CG contexts are y-up, displays y-down, and CGBitmapContext pads rows (100px RGBA
+  was 416 bytes/row!). The first sampler read assumed w*4 stride and measured
+  diagonals; fixed to ctx.bytesPerRow. 22 new checks in Tests_Rotation; 348 total
+  pass. Live render verified via snapshot with a temporarily tilted sidecar
+  (badges + rotation + fill all visible), then restored.

@@ -82,24 +82,69 @@ public enum ImagePipeline {
         }
     }
 
-    /// Read `src`, apply `crop` (if any), write JPEG to `dst`.
-    /// When `crop` is nil or full-frame, copies the file bytes unchanged.
-    public static func export(src: URL, crop: CropRect?, to dst: URL, quality: Double) throws {
+    /// Read `src`, apply `quarterTurns` then `tilt` then `crop` (whichever are
+    /// set), write JPEG to `dst`. When nothing is set, copies the file bytes
+    /// unchanged. This is the single edit pipeline the preview also renders,
+    /// so what you see while culling is what gets exported.
+    public static func export(src: URL, crop: CropRect?, to dst: URL, quality: Double,
+                              tilt: Double = 0, quarterTurns: Int = 0) throws {
+        let edited = (crop?.isFullFrame == false) || tilt != 0 || quarterTurns != 0
+        guard edited else {
+            try FileManager.default.copyItem(at: src, to: dst)
+            return
+        }
+        guard let size = orientedPixelSize(url: src) else {
+            throw pipelineError("could not read dimensions of \(src.path)")
+        }
+        let maxPixel = max(size.width, size.height)
+        guard var image = load(url: src, maxPixel: maxPixel) else {
+            throw pipelineError("could not decode \(src.path)")
+        }
+        image = rotateQuarter(image, turns: quarterTurns)
+        image = rotateToFill(image, degrees: tilt)
         if let crop, !crop.isFullFrame {
-            guard let size = orientedPixelSize(url: src) else {
-                throw pipelineError("could not read dimensions of \(src.path)")
-            }
-            let maxPixel = max(size.width, size.height)
-            guard let image = load(url: src, maxPixel: maxPixel) else {
-                throw pipelineError("could not decode \(src.path)")
-            }
             guard let cropped = ImagePipeline.crop(image, to: crop) else {
                 throw pipelineError("invalid crop rect \(crop)")
             }
-            try writeJPEG(cropped, to: dst, quality: quality)
-        } else {
-            try FileManager.default.copyItem(at: src, to: dst)
+            image = cropped
         }
+        try writeJPEG(image, to: dst, quality: quality)
+    }
+
+    /// Rotate `image` by quarter turns (1 = 90° clockwise on screen).
+    /// Reuses the EXIF orientation machinery: rotating an upright image 90°
+    /// CW on screen is the same pixel rearrangement as applying EXIF 6, etc.
+    public static func rotateQuarter(_ image: CGImage, turns: Int) -> CGImage {
+        switch ((turns % 4) + 4) % 4 {
+        case 1: return applyOrientation(image, orientation: 6)
+        case 2: return applyOrientation(image, orientation: 3)
+        case 3: return applyOrientation(image, orientation: 8)
+        default: return image
+        }
+    }
+
+    /// Rotate `image` by `degrees` (positive = clockwise on screen), scaling
+    /// it up just enough that the same-sized canvas stays covered, so there
+    /// are no empty corners to crop around. Bounded to a hair under 45° by
+    /// the caller; extreme angles zoom in hard by construction.
+    public static func rotateToFill(_ image: CGImage, degrees: Double) -> CGImage {
+        let theta = CGFloat(degrees) * .pi / 180
+        guard abs(theta) > 0.0005 else { return image }
+        let w = CGFloat(image.width), h = CGFloat(image.height)
+        let c = abs(cos(theta)), s = abs(sin(theta))
+        let scale = max((w * c + h * s) / w, (w * s + h * c) / h)
+        guard let cs = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: image.width, height: image.height,
+                                  bitsPerComponent: 8, bytesPerRow: 0, space: cs,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return image }
+        // CGContext space is y-up while the display is y-down, so a clockwise
+        // screen rotation is a negative angle in context space.
+        ctx.translateBy(x: w / 2, y: h / 2)
+        ctx.rotate(by: -theta)
+        ctx.scaleBy(x: scale, y: scale)
+        ctx.draw(image, in: CGRect(x: -w / 2, y: -h / 2, width: w, height: h))
+        return ctx.makeImage() ?? image
     }
 
     /// Rotate/flip `image` according to EXIF orientation 1...8.

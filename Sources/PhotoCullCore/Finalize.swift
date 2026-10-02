@@ -16,11 +16,12 @@ public struct FinalizeStats: Sendable, Equatable {
     public var total: Int { keep + reject + undecided }
 }
 
-/// What to do with crops when writing JPGs to the dump folder.
+/// What to do with edits when writing JPGs to the dump folder.
 public enum CropExportMode: String, Sendable, CaseIterable {
     /// Copy the original JPG untouched.
     case original
-    /// Write a cropped copy when a crop is set, else copy the original.
+    /// Write an edited copy (crop, tilt, rotation) when any is set, else copy
+    /// the original.
     case applyCrop
 }
 
@@ -99,8 +100,12 @@ public enum Finalize {
                 if dump {
                     let dst = collisionFreeDestination(for: pair.jpg, in: dumpFolder)
                     let crop = cropMode == .applyCrop ? session.crop(for: pair.stem) : nil
-                    if let crop, !crop.isFullFrame {
-                        try ImagePipeline.export(src: pair.jpg, crop: crop, to: dst, quality: 0.9)
+                    let tilt = cropMode == .applyCrop ? session.tilt(for: pair.stem) : 0
+                    let turns = cropMode == .applyCrop ? session.quarterTurns(for: pair.stem) : 0
+                    let hasCrop = crop.map { !$0.isFullFrame } ?? false
+                    if hasCrop || tilt != 0 || turns != 0 {
+                        try ImagePipeline.export(src: pair.jpg, crop: crop, to: dst,
+                                                 quality: 0.9, tilt: tilt, quarterTurns: turns)
                         cropped += 1
                     } else {
                         try fm.copyItem(at: pair.jpg, to: dst)

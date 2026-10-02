@@ -9,6 +9,7 @@ enum CropHandle {
 final class CropDragState: ObservableObject {
     @Published var startRect: CropRect?
     @Published var handle: CropHandle = .none
+    @Published var isTilt = false
 }
 
 /// Draggable, resizable crop rectangle drawn over the full image.
@@ -19,6 +20,8 @@ struct CropOverlay: View {
     /// Locked aspect ratio (w/h), or nil for free.
     let aspect: Double?
     var onAspectRequest: () -> Void = {}
+    /// Live tilt angle while dragging on the dimmed area outside the crop.
+    var onTiltChange: ((Double) -> Void)? = nil
 
     private typealias Handle = CropHandle
     @StateObject private var dragState = CropDragState()
@@ -93,6 +96,15 @@ struct CropOverlay: View {
                 if dragState.startRect == nil {
                     dragState.startRect = rect
                     dragState.handle = hitHandle(value.startLocation)
+                    // A drag that starts outside the crop rect levels the photo:
+                    // drag along the horizon and the image tilts to match.
+                    dragState.isTilt = dragState.handle == .none
+                }
+                if dragState.isTilt {
+                    let t = value.translation
+                    guard abs(t.width) > 4 || abs(t.height) > 4 else { return }
+                    onTiltChange?(Self.tiltFrom(dx: t.width, dy: t.height))
+                    return
                 }
                 guard let start = dragState.startRect, imageRect.width > 0, imageRect.height > 0 else { return }
                 let dx = Double(value.translation.width / imageRect.width)
@@ -102,7 +114,16 @@ struct CropOverlay: View {
             .onEnded { _ in
                 dragState.startRect = nil
                 dragState.handle = .none
+                dragState.isTilt = false
             }
+    }
+
+    /// Tilt angle for a drag vector: the horizon direction, clockwise
+    /// positive, snapped near zero and clamped to ±45°, on a 0.25° grid.
+    static func tiltFrom(dx: CGFloat, dy: CGFloat) -> Double {
+        let a = atan2(-Double(dy), Double(dx)) * 180 / .pi
+        let clamped = min(45, max(-45, a))
+        return abs(clamped) < 0.4 ? 0 : (clamped * 4).rounded() / 4
     }
 
     private func hitHandle(_ p: CGPoint) -> Handle {

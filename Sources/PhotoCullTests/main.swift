@@ -11,6 +11,7 @@ let runners: [(String, () throws -> Void)] = [
     ("Ingest", suiteIngest),
     ("Finalize", suiteFinalize),
     ("ImagePipeline", suiteImagePipeline),
+    ("Rotation", suiteRotation),
     ("Library", suiteLibrary),
     ("EndToEnd", suiteEndToEnd),
     ("PairRepair", suitePairRepair),

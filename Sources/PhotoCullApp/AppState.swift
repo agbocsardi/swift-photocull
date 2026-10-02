@@ -130,6 +130,8 @@ final class AppState: ObservableObject {
     @Published var cropMode = false
     @Published var cropRect: CropRect = .full
     @Published var cropAspect: CropAspect = .free
+    /// Working tilt angle while crop mode is open (degrees, clockwise on screen).
+    @Published var cropTilt: Double = 0
     /// When true the image pane shows the cropped result rather than the full frame.
     @Published var showCroppedPreview = true
 
@@ -197,6 +199,19 @@ final class AppState: ObservableObject {
     }
 
     var hasCrop: Bool { !(currentCrop?.isFullFrame ?? true) }
+
+    var currentTilt: Double {
+        guard let stem = currentStem else { return 0 }
+        return session?.tilt(for: stem) ?? 0
+    }
+
+    var currentQuarterTurns: Int {
+        guard let stem = currentStem else { return 0 }
+        return session?.quarterTurns(for: stem) ?? 0
+    }
+
+    var hasTilt: Bool { abs(currentTilt) >= 0.05 }
+    var isQuarterRotated: Bool { currentQuarterTurns != 0 }
 
     var showingFinalizeSheet: Bool {
         switch modal {
@@ -350,6 +365,7 @@ final class AppState: ObservableObject {
     func enterCropMode() {
         guard currentPair != nil else { return }
         cropRect = currentCrop ?? .full
+        cropTilt = currentTilt
         cropAspect = .free
         cropMode = true
         focusedPane = .image
@@ -357,6 +373,7 @@ final class AppState: ObservableObject {
 
     func cancelCrop() {
         cropRect = currentCrop ?? .full
+        cropTilt = currentTilt
         cropMode = false
     }
 
@@ -369,22 +386,44 @@ final class AppState: ObservableObject {
         guard let stem = currentStem else { return }
         let rect = cropRect.clamped(minSize: 0.02)
         session?.setCrop(stem, rect.isFullFrame ? nil : rect)
+        session?.setTilt(stem, cropTilt)
         revision += 1
         persist()
         refreshRows()
         cropMode = false
-        toastMessage(rect.isFullFrame ? "Crop cleared" : "Crop saved")
+        toastMessage(rect.isFullFrame && !hasTilt ? "Crop cleared"
+                   : rect.isFullFrame ? "Tilt saved" : "Crop saved")
     }
 
     func clearCrop() {
         guard let stem = currentStem else { return }
         session?.setCrop(stem, nil)
+        session?.setTilt(stem, nil)
         cropRect = .full
+        cropTilt = 0
         revision += 1
         persist()
         refreshRows()
         toastMessage("Crop cleared")
     }
+
+    /// Quarter-turn the current photo. Persisted immediately — rotation is an
+    /// orientation fix, not something that needs an edit-mode commit.
+    func rotateQuarter(_ dir: Int) {
+        guard let stem = currentStem else { return }
+        session?.setQuarter(stem, currentQuarterTurns + dir)
+        revision += 1
+        persist()
+    }
+
+    /// Nudge the working tilt in crop mode. Values land on a 0.25° grid,
+    /// clamped to ±45°.
+    func nudgeTilt(_ delta: Double) {
+        let v = ((cropTilt + delta) * 4).rounded() / 4
+        cropTilt = min(45, max(-45, v))
+    }
+
+    func resetTilt() { cropTilt = 0 }
 
     /// Constrain `cropRect` to the selected aspect ratio, anchored at its centre.
     func applyAspect() {
@@ -742,6 +781,9 @@ final class AppState: ObservableObject {
         case "a": cycleAspect(); return true
         case "r": resetCrop(); return true
         case "p": showCroppedPreview.toggle(); return true
+        case ",": nudgeTilt(key.shift ? -1 : -0.25); return true
+        case ".": nudgeTilt(key.shift ? 1 : 0.25); return true
+        case "t": resetTilt(); return true
         default: break
         }
 

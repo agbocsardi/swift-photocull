@@ -7,9 +7,18 @@ import PhotoCullCore
 struct ImagePane: View {
     @EnvironmentObject var app: AppState
 
-    /// What the pane actually draws (cropped preview, or the full frame in crop mode).
+    /// What the pane actually draws. This is the exact edit pipeline the
+    /// export runs (quarter turn → tilt → crop), so preview == output.
+    /// Crop mode edits show the working tilt against the full frame.
     private var displayImage: CGImage? {
-        guard let img = app.imageLoader.current else { return nil }
+        guard var img = app.imageLoader.current else { return nil }
+        if app.currentQuarterTurns != 0 {
+            img = ImagePipeline.rotateQuarter(img, turns: app.currentQuarterTurns)
+        }
+        let tilt = app.cropMode ? app.cropTilt : app.currentTilt
+        if tilt != 0 {
+            img = ImagePipeline.rotateToFill(img, degrees: tilt)
+        }
         if app.cropMode { return img }
         if app.showCroppedPreview, let crop = app.currentCrop, !crop.isFullFrame {
             return ImagePipeline.crop(img, to: crop) ?? img
@@ -49,7 +58,8 @@ struct ImagePane: View {
                                     rect: $app.cropRect,
                                     imageRect: CGRect(origin: origin, size: shown),
                                     aspect: app.cropAspect.ratio,
-                                    onAspectRequest: { app.applyAspect() }
+                                    onAspectRequest: { app.applyAspect() },
+                                    onTiltChange: { app.cropTilt = $0 }
                                 )
                             }
                         }
@@ -110,8 +120,13 @@ struct ImagePane: View {
                 Text(String(format: "%.0f%% × %.0f%%", app.cropRect.w * 100, app.cropRect.h * 100))
                     .font(Typo.number)
                     .foregroundStyle(Palette.secondary)
+                Text(String(format: "%+.1f°", app.cropTilt))
+                    .font(Typo.number)
+                    .foregroundStyle(app.cropTilt != 0 ? Palette.crop : Palette.secondary)
             } else if app.currentPair != nil {
                 if app.hasCrop { DecisionBadge(text: "CROPPED", color: Palette.crop) }
+                if app.hasTilt { DecisionBadge(text: "TILTED", color: Palette.crop) }
+                if app.isQuarterRotated { DecisionBadge(text: "ROTATED", color: Palette.crop) }
                 Text(String(format: "%.0f%%", app.zoom * 100))
                     .font(Typo.number)
                     .foregroundStyle(Palette.secondary)
@@ -169,6 +184,15 @@ struct FloatingActionBar: View {
                 app.showCroppedPreview.toggle()
             }
             .disabled(!app.hasCrop)
+
+            action("rotate.left", tint: Palette.secondary,
+                   tip: "Rotate a quarter turn left", filled: false) {
+                app.rotateQuarter(-1)
+            }
+            action("rotate.right", tint: Palette.secondary,
+                   tip: "Rotate a quarter turn right", filled: false) {
+                app.rotateQuarter(1)
+            }
 
             Divider().frame(height: 16).overlay(Palette.separator)
 
