@@ -7,6 +7,7 @@ import PhotoCullCore
 struct ImagePane: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var loader: ImageLoader
+    @EnvironmentObject var canvas: CanvasState
     /// Keyboard focus on the tilt slider: arrows then nudge tilt.
     @FocusState private var tiltFocused: Bool
     /// 1-slot memo for the CPU edit pipeline (see `memoizedDisplayImage`).
@@ -91,10 +92,10 @@ struct ImagePane: View {
                     GeometryReader { geo in
                         let container = geo.size
                         let base = fitSize(CGSize(width: cg.width, height: cg.height), into: container)
-                        let shown = CGSize(width: base.width * app.zoom, height: base.height * app.zoom)
+                        let shown = CGSize(width: base.width * canvas.zoom, height: base.height * canvas.zoom)
                         let origin = CGPoint(
-                            x: (container.width - shown.width) / 2 + app.pan.width,
-                            y: (container.height - shown.height) / 2 + app.pan.height)
+                            x: (container.width - shown.width) / 2 + canvas.pan.width,
+                            y: (container.height - shown.height) / 2 + canvas.pan.height)
 
                         ZStack(alignment: .topLeading) {
                             if app.cropMode {
@@ -102,7 +103,7 @@ struct ImagePane: View {
                             } else {
                                 Image(decorative: cg, scale: 1)
                                     .resizable()
-                                    .interpolation(app.zoom > 1.5 ? .none : .high)
+                                    .interpolation(canvas.zoom > 1.5 ? .none : .high)
                                     .frame(width: shown.width, height: shown.height)
                                     // Peak interaction cost: skip the
                                     // full-canvas Gaussian while cropping.
@@ -112,7 +113,7 @@ struct ImagePane: View {
 
                             if app.cropMode {
                                 CropOverlay(
-                                    rect: $app.cropRect,
+                                    rect: $canvas.cropRect,
                                     imageRect: CGRect(origin: origin, size: shown),
                                     aspect: app.cropAspect.ratio,
                                     onAspectRequest: { app.applyAspect() },
@@ -137,8 +138,8 @@ struct ImagePane: View {
                             DragGesture(minimumDistance: 2)
                                 .onChanged { value in
                                     guard !app.cropMode else { return }
-                                    app.pan = CGSize(width: value.translation.width,
-                                                     height: value.translation.height)
+                                    canvas.pan = CGSize(width: value.translation.width,
+                                                        height: value.translation.height)
                                 }
                         )
                     }
@@ -214,8 +215,8 @@ struct ImagePane: View {
             .frame(width: shown.width, height: shown.height)
             .scaleEffect(CGFloat(ImagePipeline.coverScale(
                 width: Double(shown.width), height: Double(shown.height),
-                degrees: app.cropTilt)))
-            .rotationEffect(.degrees(app.cropTilt))
+                degrees: canvas.cropTilt)))
+            .rotationEffect(.degrees(canvas.cropTilt))
             .clipped()
             .offset(x: origin.x, y: origin.y)
     }
@@ -230,12 +231,12 @@ struct ImagePane: View {
                 .foregroundStyle(Palette.crop)
                 .onTapGesture { tiltFocused = true }
             Slider(value: Binding(
-                get: { app.cropTilt },
-                set: { app.cropTilt = ($0 * 4).rounded() / 4 }),
+                get: { canvas.cropTilt },
+                set: { canvas.cropTilt = ($0 * 4).rounded() / 4 }),
                 in: -45...45, step: 0.25)
                 .frame(width: 320)
                 .focused($tiltFocused)
-            Text(String(format: "%+.2f°", app.cropTilt))
+            Text(String(format: "%+.2f°", canvas.cropTilt))
                 .font(Typo.number)
                 .monospacedDigit()
                 .frame(width: 60, alignment: .trailing)
@@ -261,17 +262,17 @@ struct ImagePane: View {
                 Text(app.cropAspect.rawValue)
                     .font(Typo.number)
                     .foregroundStyle(Palette.secondary)
-                Text(String(format: "%.0f%% × %.0f%%", app.cropRect.w * 100, app.cropRect.h * 100))
+                Text(String(format: "%.0f%% × %.0f%%", canvas.cropRect.w * 100, canvas.cropRect.h * 100))
                     .font(Typo.number)
                     .foregroundStyle(Palette.secondary)
-                Text(String(format: "%+.1f°", app.cropTilt))
+                Text(String(format: "%+.1f°", canvas.cropTilt))
                     .font(Typo.number)
-                    .foregroundStyle(app.cropTilt != 0 ? Palette.crop : Palette.secondary)
+                    .foregroundStyle(canvas.cropTilt != 0 ? Palette.crop : Palette.secondary)
             } else if app.currentPair != nil {
                 if app.hasCrop { DecisionBadge(text: "CROPPED", color: Palette.crop) }
                 if app.hasTilt { DecisionBadge(text: "TILTED", color: Palette.crop) }
                 if app.isQuarterRotated { DecisionBadge(text: "ROTATED", color: Palette.crop) }
-                Text(String(format: "%.0f%%", app.zoom * 100))
+                Text(String(format: "%.0f%%", canvas.zoom * 100))
                     .font(Typo.number)
                     .foregroundStyle(Palette.secondary)
             }
@@ -292,6 +293,7 @@ struct ImagePane: View {
 /// Pill-shaped action bar over the photo: icons with tooltips, vibrancy + shadow.
 struct FloatingActionBar: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var canvas: CanvasState
 
     var body: some View {
         HStack(spacing: 2) {
@@ -341,17 +343,17 @@ struct FloatingActionBar: View {
             Divider().frame(height: 16).overlay(Palette.separator)
 
             action("minus.magnifyingglass", tint: Palette.secondary, tip: "Zoom out (-)", filled: false) {
-                app.zoomOut()
+                canvas.zoomOut()
             }
-            Text(String(format: "%.0f%%", app.zoom * 100))
+            Text(String(format: "%.0f%%", canvas.zoom * 100))
                 .font(Typo.number)
                 .foregroundStyle(Palette.secondary)
                 .frame(width: 40)
             action("plus.magnifyingglass", tint: Palette.secondary, tip: "Zoom in (+)", filled: false) {
-                app.zoomIn()
+                canvas.zoomIn()
             }
             action("arrow.up.left.and.arrow.down.right", tint: Palette.secondary,
-                   tip: "Fit to window (0)", filled: false) { app.resetZoom() }
+                   tip: "Fit to window (0)", filled: false) { canvas.resetZoom() }
 
             Divider().frame(height: 16).overlay(Palette.separator)
 

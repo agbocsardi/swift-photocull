@@ -124,18 +124,14 @@ final class AppState: ObservableObject {
 
     // MARK: Preview / crop
 
-    @Published var zoom: CGFloat = 1
-    @Published var pan: CGSize = .zero
     @Published var cropMode = false
-    @Published var cropRect: CropRect = .full
     @Published var cropAspect: CropAspect = .free
-    /// Working tilt angle while crop mode is open (degrees, clockwise on screen).
-    @Published var cropTilt: Double = 0
     /// True while the tilt slider has keyboard focus: arrows then nudge tilt
     /// instead of moving the crop region.
     @Published var tiltFocused = false
     /// When true the image pane shows the cropped result rather than the full frame.
     @Published var showCroppedPreview = true
+    // Zoom/pan/cropRect/cropTilt live on `canvas` (CanvasState) above.
 
     // MARK: Ingest
 
@@ -155,6 +151,10 @@ final class AppState: ObservableObject {
     // forwarding its changes here re-invalidated the whole window per decode.
     let imageLoader = ImageLoader()
     let thumbs = ThumbnailStore()
+    /// Zoom/pan/crop geometry lives on its own observable (see CanvasState):
+    /// it changes per drag tick / key repeat, far too often to republish the
+    /// whole app object.
+    let canvas = CanvasState()
 
     private var toastTask: Task<Void, Never>?
     /// Debounced sidecar write for navigation (trailing edge, ~500 ms).
@@ -265,7 +265,7 @@ final class AppState: ObservableObject {
             index = min(max(0, loaded.lastIndex), max(0, loadedPairs.count - 1))
             revision += 1
             cropMode = false
-            resetZoom()
+            canvas.resetZoom()
             loadCurrent()
         } catch {
             fail("Could not open \(date): \(error.localizedDescription)")
@@ -287,7 +287,7 @@ final class AppState: ObservableObject {
         if index + 1 < pairs.count { neighbours.append(pairs[index + 1].jpg) }
         if index - 1 >= 0 { neighbours.append(pairs[index - 1].jpg) }
         imageLoader.prefetch(urls: neighbours, maxPixel: target)
-        cropRect = session?.crop(for: pair.stem) ?? .full
+        canvas.cropRect = session?.crop(for: pair.stem) ?? .full
     }
 
     /// Full-resolution target for decoding: big enough to crop from, bounded
@@ -389,7 +389,7 @@ final class AppState: ObservableObject {
         session?.lastIndex = index
         schedulePersist()
         cropMode = false
-        resetZoom()
+        canvas.resetZoom()
         loadCurrent()
     }
 
@@ -456,31 +456,31 @@ final class AppState: ObservableObject {
 
     func enterCropMode() {
         guard currentPair != nil else { return }
-        cropRect = currentCrop ?? .full
-        cropTilt = currentTilt
+        canvas.cropRect = currentCrop ?? .full
+        canvas.cropTilt = currentTilt
         cropAspect = .free
         cropMode = true
         focusedPane = .image
     }
 
     func cancelCrop() {
-        cropRect = currentCrop ?? .full
-        cropTilt = currentTilt
+        canvas.cropRect = currentCrop ?? .full
+        canvas.cropTilt = currentTilt
         cropMode = false
     }
 
     func resetCrop() {
-        cropRect = .full
+        canvas.cropRect = .full
         cropAspect = .free
     }
 
     func commitCrop() {
         guard let stem = currentStem else { return }
-        let rect = cropRect.clamped(minSize: 0.02)
+        let rect = canvas.cropRect.clamped(minSize: 0.02)
         let priorCrop = session?.crop(for: stem)
         let priorTilt = session?.tilt(for: stem)
         let newCrop: CropRect? = rect.isFullFrame ? nil : rect
-        let newTilt: Double? = abs(cropTilt) < 0.05 ? nil : cropTilt
+        let newTilt: Double? = abs(canvas.cropTilt) < 0.05 ? nil : canvas.cropTilt
         run(newCrop == nil ? "clearing the crop" : "cropping \(stem)",
             change: { s in s.setCrop(stem, newCrop); s.setTilt(stem, newTilt) },
             revert: { s in s.setCrop(stem, priorCrop); s.setTilt(stem, priorTilt) })
@@ -497,8 +497,8 @@ final class AppState: ObservableObject {
         run("clearing the crop",
             change: { s in s.setCrop(stem, nil); s.setTilt(stem, nil) },
             revert: { s in s.setCrop(stem, priorCrop); s.setTilt(stem, priorTilt) })
-        cropRect = .full
-        cropTilt = 0
+        canvas.cropRect = .full
+        canvas.cropTilt = 0
         refreshRows()
         toastMessage("Crop cleared")
     }
@@ -516,11 +516,11 @@ final class AppState: ObservableObject {
     /// Nudge the working tilt in crop mode. Values land on a 0.25° grid,
     /// clamped to ±45°.
     func nudgeTilt(_ delta: Double) {
-        let v = ((cropTilt + delta) * 4).rounded() / 4
-        cropTilt = min(45, max(-45, v))
+        let v = ((canvas.cropTilt + delta) * 4).rounded() / 4
+        canvas.cropTilt = min(45, max(-45, v))
     }
 
-    func resetTilt() { cropTilt = 0 }
+    func resetTilt() { canvas.cropTilt = 0 }
 
     /// Constrain `cropRect` to the selected aspect ratio, anchored at its centre.
     func applyAspect() {
@@ -540,15 +540,15 @@ final class AppState: ObservableObject {
         guard let pair = currentPair,
               let size = ImagePipeline.orientedPixelSize(url: pair.jpg), size.height > 0 else { return }
         let r = ratio * Double(size.height) / Double(size.width)
-        let cx = cropRect.x + cropRect.w / 2
-        let cy = cropRect.y + cropRect.h / 2
-        var w = cropRect.w
+        let cx = canvas.cropRect.x + canvas.cropRect.w / 2
+        let cy = canvas.cropRect.y + canvas.cropRect.h / 2
+        var w = canvas.cropRect.w
         var h = w / r
         if h > 1 { h = 1; w = h * r }
         if w > 1 { w = 1; h = w / r }
         let x = min(max(0, cx - w / 2), 1 - w)
         let y = min(max(0, cy - h / 2), 1 - h)
-        cropRect = CropRect(x: x, y: y, w: w, h: h)
+        canvas.cropRect = CropRect(x: x, y: y, w: w, h: h)
     }
 
     func cycleAspect() {
@@ -560,13 +560,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Zoom / pan
 
-    func resetZoom() {
-        zoom = 1
-        pan = .zero
-    }
-
-    func zoomIn() { zoom = min(zoom * 1.25, 8) }
-    func zoomOut() { zoom = max(zoom / 1.25, 0.1) }
+    // resetZoom/zoomIn/zoomOut moved to CanvasState.
 
     // MARK: - Selection + filter
 
@@ -933,25 +927,25 @@ final class AppState: ObservableObject {
         let step: Double = key.shift ? 0.02 : 0.005
         switch key.arrow {
         case .left:
-            cropRect.x = max(0, cropRect.x - step)
+            canvas.cropRect.x = max(0, canvas.cropRect.x - step)
             return true
         case .right:
-            cropRect.x = min(1 - cropRect.w, cropRect.x + step)
+            canvas.cropRect.x = min(1 - canvas.cropRect.w, canvas.cropRect.x + step)
             return true
         case .up:
-            cropRect.y = max(0, cropRect.y - step)
+            canvas.cropRect.y = max(0, canvas.cropRect.y - step)
             return true
         case .down:
-            cropRect.y = min(1 - cropRect.h, cropRect.y + step)
+            canvas.cropRect.y = min(1 - canvas.cropRect.h, canvas.cropRect.y + step)
             return true
         case nil: break
         }
 
         switch key.chars {
-        case "h": cropRect.x = max(0, cropRect.x - step); return true
-        case "l": cropRect.x = min(1 - cropRect.w, cropRect.x + step); return true
-        case "k": cropRect.y = max(0, cropRect.y - step); return true
-        case "j": cropRect.y = min(1 - cropRect.h, cropRect.y + step); return true
+        case "h": canvas.cropRect.x = max(0, canvas.cropRect.x - step); return true
+        case "l": canvas.cropRect.x = min(1 - canvas.cropRect.w, canvas.cropRect.x + step); return true
+        case "k": canvas.cropRect.y = max(0, canvas.cropRect.y - step); return true
+        case "j": canvas.cropRect.y = min(1 - canvas.cropRect.h, canvas.cropRect.y + step); return true
         case "a": cycleAspect(); return true
         case "r": resetCrop(); return true
         case "p": showCroppedPreview.toggle(); return true
@@ -977,9 +971,9 @@ final class AppState: ObservableObject {
         case "c": enterCropMode(); return true
         case "?": modal = .help; return true
         case "f": revealInFinder(); return true
-        case "+", "=": zoomIn(); return true
-        case "-": zoomOut(); return true
-        case "0": resetZoom(); return true
+        case "+", "=": canvas.zoomIn(); return true
+        case "-": canvas.zoomOut(); return true
+        case "0": canvas.resetZoom(); return true
         default: break
         }
 

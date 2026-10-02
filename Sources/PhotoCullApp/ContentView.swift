@@ -55,7 +55,7 @@ struct ContentView: View {
             // `--crop` opens crop mode so the overlay can be inspected in a snapshot.
             if CommandLine.arguments.contains("--crop") {
                 app.enterCropMode()
-                app.cropRect = CropRect(x: 0.14, y: 0.08, w: 0.62, h: 0.78)
+                app.canvas.cropRect = CropRect(x: 0.14, y: 0.08, w: 0.62, h: 0.78)
             }
         }
     }
