@@ -97,47 +97,45 @@ public enum Finalize {
 
         // ── Three phases (perf wave 3, B1) ─────────────────────────────────
         //
-        // PHASE 1 (serial, exact scan order): decide reject/keep per pair and
-        // allocate EVERY destination up front — dump dst, archive jpgDst and
-        // rawDst via collisionFreeDestination. Destination allocation must
-        // stay serial: collisionFreeDestination probes the filesystem with
-        // fileExists(), and under concurrency two workers can probe the same
-        // not-yet-written name, both see "free", and the second write clobbers
-        // the first. Rejects are trashed immediately (a cheap move, and the
-        // order stays deterministic). Unedited keepers dump via copyItem right
-        // here — it is an APFS clone at ~0.1 ms, parallelizing buys nothing.
-        // Only cropped keepers queue an export job.
+        // PHASE 1 (serial, exact scan order): PURE PLANNING — no filesystem
+        // side effects beyond the dump/archive directory creations above,
+        // which the old serial loop also did up-front. Classify each pair
+        // and allocate EVERY destination — dump dst, archive jpgDst,
+        // rawDst — via collisionFreeDestination. Allocation must stay
+        // serial: it probes the filesystem with fileExists(), and under
+        // concurrency two workers could probe the same not-yet-written
+        // name, both see "free", and the second write clobbers the first.
+        // Cropped keepers queue an export job.
         //
-        // PHASE 2 (parallel, width = active core count): cropped exports via
-        // ImagePipeline.export, each written to "<dst>.tmp" first and renamed
-        // into place on success — a failed or cancelled encode then never
-        // leaves a truncated dump file behind. All outcomes are collected;
-        // nothing throws here.
+        // PHASE 2 (parallel, width = active core count): cropped exports
+        // via ImagePipeline.export, each written to "<dst>.tmp" — the only
+        // files this phase touches. A failed or cancelled encode then never
+        // leaves a truncated file in the dump: failed encodes remove their
+        // tmp, successes are left staged for phase 3 to promote. All
+        // outcomes are collected; nothing throws here.
         //
-        // PHASE 3 (serial, original order): the archive moves, stopping at the
-        // first pair whose export failed. This reproduces the old serial
-        // fail-fast exactly: every pair before the failure is fully dumped and
-        // archived, the failing pair and all later pairs keep their files in
-        // the inbox, and the first error is thrown. Counters report what
-        // actually happened. (Known trade-off of phase-1 immediacy: unedited
-        // keepers after a failure already have their dump clone; a re-run
-        // re-dumps what remains in the inbox under collision-free names.)
+        // PHASE 3 (serial, exact scan order, fail-fast): every ordered side
+        // effect happens here — rejects trashed, unedited keepers
+        // dump-cloned, staged exports renamed into place, archive moves —
+        // in the original pair order, counters incrementing at the point
+        // of effect. A failure at pair k therefore reproduces the old
+        // serial end state exactly: pairs before k fully processed, k..N
+        // untouched (still in the inbox, not dumped, later rejects not
+        // trashed), and the first error thrown. On the break, staged tmp
+        // exports of unprocessed pairs are removed — after any run (success
+        // or failure) no *.tmp files remain; only a hard crash can leave
+        // them, where the .tmp name marks them as incomplete anyway.
 
+        // PHASE 1 — planning only.
         var plans: [Plan] = []
         var jobs: [ExportJob] = []
-
-        // PHASE 1
         for pair in pairs {
+            var kind = Plan.Kind.dumpClone
+            var dumpDst: URL?
             switch session.get(pair.stem) {
             case .reject:
-                try trash(pair.jpg)
-                trashed += 1
-                if let raw = pair.raw {
-                    try trash(raw)
-                    trashed += 1
-                }
+                kind = .reject
             default:  // keep and undecided are treated the same
-                var jobIndex: Int?
                 if dump {
                     let dst = collisionFreeDestination(for: pair.jpg, in: dumpFolder)
                     let crop = cropMode == .applyCrop ? session.crop(for: pair.stem) : nil
@@ -145,35 +143,58 @@ public enum Finalize {
                     let turns = cropMode == .applyCrop ? session.quarterTurns(for: pair.stem) : 0
                     let hasCrop = crop.map { !$0.isFullFrame } ?? false
                     if hasCrop || tilt != 0 || turns != 0 {
-                        jobIndex = jobs.count
+                        kind = .export(jobIndex: jobs.count)
                         jobs.append(ExportJob(src: pair.jpg, dst: dst, crop: crop,
                                               tilt: tilt, turns: turns))
                     } else {
-                        try fm.copyItem(at: pair.jpg, to: dst)  // APFS clone
-                        dumped += 1
+                        dumpDst = dst
                     }
                 }
-                let jpgDst = collisionFreeDestination(for: pair.jpg, in: archiveFolder)
-                var rawDst: URL?
-                if let raw = pair.raw {
-                    rawDst = collisionFreeDestination(for: raw, in: archiveFolder)
-                }
-                plans.append(Plan(jpg: pair.jpg, jpgDst: jpgDst,
-                                  raw: pair.raw, rawDst: rawDst, jobIndex: jobIndex))
             }
+            let jpgDst = collisionFreeDestination(for: pair.jpg, in: archiveFolder)
+            var rawDst: URL?
+            if let raw = pair.raw {
+                rawDst = collisionFreeDestination(for: raw, in: archiveFolder)
+            }
+            plans.append(Plan(kind: kind, jpg: pair.jpg, dumpDst: dumpDst,
+                              jpgDst: jpgDst, raw: pair.raw, rawDst: rawDst))
         }
 
         // PHASE 2
         let outcomes = exportAllParallel(jobs: jobs)
 
-        // PHASE 3
+        // PHASE 3 — all side effects, in exact scan order, fail-fast.
         var firstFailure: Error?
-        for plan in plans {
-            if let idx = plan.jobIndex {
-                if let error = outcomes[idx].error {
-                    firstFailure = error
-                    break
+        loop: for (i, plan) in plans.enumerated() {
+            switch plan.kind {
+            case .reject:
+                try trash(plan.jpg)
+                trashed += 1
+                if let raw = plan.raw {
+                    try trash(raw)
+                    trashed += 1
                 }
+                continue
+            case .dumpClone:
+                if let dumpDst = plan.dumpDst {
+                    try fm.copyItem(at: plan.jpg, to: dumpDst)  // APFS clone
+                    dumped += 1
+                }
+            case .export(let jobIndex):
+                if let error = outcomes[jobIndex].error {
+                    firstFailure = error
+                    // The failing pair's tmp is already gone (removed by the
+                    // worker's error path); remove the staged exports of
+                    // every unprocessed pair so the dump stays clean.
+                    for later in plans[(i + 1)...] {
+                        if case .export(let j) = later.kind {
+                            try? fm.removeItem(at: stagedPath(for: jobs[j].dst))
+                        }
+                    }
+                    break loop
+                }
+                try fm.moveItem(at: stagedPath(for: jobs[jobIndex].dst),
+                                to: jobs[jobIndex].dst)
                 dumped += 1
                 cropped += 1
             }
@@ -273,14 +294,31 @@ public enum Finalize {
         let turns: Int
     }
 
-    /// Per-pair phase-3 plan: where the archive moves go, and which export
-    /// job (if any) must have succeeded before they may run.
+    /// Per-pair phase-3 plan: what kind of pair this is (decided in phase 1),
+    /// where the dump clone goes (unedited keepers, when dumping), which
+    /// export job must have succeeded before the pair may proceed, and where
+    /// the archive moves go.
     private struct Plan {
+        enum Kind {
+            /// Trash the jpg (+raw).
+            case reject
+            /// Unedited keeper: clone to the dump when dumping.
+            case dumpClone
+            /// Cropped keeper: promote staged export `jobIndex` first.
+            case export(jobIndex: Int)
+        }
+        let kind: Kind
         let jpg: URL
+        let dumpDst: URL?
         let jpgDst: URL
         let raw: URL?
         let rawDst: URL?
-        let jobIndex: Int?
+    }
+
+    /// Where an export's staged ("<dst>.tmp") file lives until phase 3
+    /// promotes it into place.
+    private static func stagedPath(for dst: URL) -> URL {
+        dst.appendingPathExtension("tmp")
     }
 
     /// Per-export outcome. Boxes the error in a class so results cross task
@@ -294,12 +332,14 @@ public enum Finalize {
     private struct ExportOutcomeMissing: Error {}
 
     /// Run cropped exports `jobs` on a TaskGroup capped at the active core
-    /// count (measured 3.1–3.7× over serial at width 8). Each export writes to
-    /// "<dst>.tmp" and renames into place on success, so a failed encode never
-    /// leaves a truncated dump file. Returns one outcome per job, aligned with
-    /// the input; errors are reported, never thrown. The group runs on a
-    /// detached task and the synchronous caller waits on a semaphore — `run`
-    /// stays a synchronous API (AppState and the CLI call it directly).
+    /// count (measured 3.1–3.7× over serial at width 8). Each export is
+    /// written to "<dst>.tmp" and left staged — phase 3 does the ordered
+    /// rename — so a failed encode never leaves a truncated dump file, and a
+    /// failed RUN never leaves dumps for pairs the fail-fast contract keeps
+    /// untouched. Returns one outcome per job, aligned with the input; errors
+    /// are reported, never thrown. The group runs on a detached task and the
+    /// synchronous caller waits on a semaphore — `run` stays a synchronous
+    /// API (AppState and the CLI call it directly).
     private static func exportAllParallel(jobs: [ExportJob]) -> [ExportOutcome] {
         final class ResultsBox: @unchecked Sendable { var values: [ExportOutcome] = [] }
         let box = ResultsBox()
@@ -312,13 +352,12 @@ public enum Finalize {
                 func add(_ i: Int) {
                     let job = jobs[i]
                     group.addTask {
-                        let tmp = job.dst.appendingPathExtension("tmp")
+                        let tmp = stagedPath(for: job.dst)
                         do {
                             try ImagePipeline.export(src: job.src, crop: job.crop, to: tmp,
                                                      quality: 0.9, tilt: job.tilt,
                                                      quarterTurns: job.turns)
-                            try FileManager.default.moveItem(at: tmp, to: job.dst)
-                            return (i, ExportOutcome(error: nil))
+                            return (i, ExportOutcome(error: nil))  // stays staged for phase 3
                         } catch {
                             try? FileManager.default.removeItem(at: tmp)
                             return (i, ExportOutcome(error: error))

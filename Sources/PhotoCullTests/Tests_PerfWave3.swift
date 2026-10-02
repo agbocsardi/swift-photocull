@@ -103,17 +103,17 @@ func suiteFinalizeParallel() throws {
 
     // ── Middle export fails: prefix contract ─────────────────────────────
     // Pairs before the failure are fully dumped + archived; the failing pair
-    // and every later pair stay untouched in the inbox; the first error is
-    // thrown. (Phase 2 still runs later jobs — S0003's dump exists — but
-    // nothing after the failure is archived.)
+    // and every later pair — keepers AND rejects — stay untouched in the
+    // inbox with no dump files; the first error is thrown.
     let date2 = "2024-08-02"
     let folder2 = tmp.appendingPathComponent("inbox").appendingPathComponent(date2)
     try fm.createDirectory(at: folder2, withIntermediateDirectories: true)
     try fm.copyItem(at: fx, to: folder2.appendingPathComponent("S0001.JPG"))
     try Data(repeating: 0x41, count: 500).write(to: folder2.appendingPathComponent("S0002.JPG"))  // undecodable
     try fm.copyItem(at: fx, to: folder2.appendingPathComponent("S0003.JPG"))
+    try fm.copyItem(at: fx, to: folder2.appendingPathComponent("S0004.JPG"))
     try writeSidecar(folder2,
-                     #"{"version":1,"decisions":{"S0001":"keep","S0002":"keep","S0003":"keep"},"crops":{"S0001":{"x":0,"y":0,"w":0.5,"h":0.5},"S0002":{"x":0,"y":0,"w":0.5,"h":0.5},"S0003":{"x":0,"y":0,"w":0.25,"h":0.25}},"last_index":3}"#)
+                     #"{"version":1,"decisions":{"S0001":"keep","S0002":"keep","S0003":"keep","S0004":"reject"},"crops":{"S0001":{"x":0,"y":0,"w":0.5,"h":0.5},"S0002":{"x":0,"y":0,"w":0.5,"h":0.5},"S0003":{"x":0,"y":0,"w":0.25,"h":0.25}},"last_index":4}"#)
 
     let arch2 = tmp.appendingPathComponent("archive").appendingPathComponent(date2)
     let dump2 = tmp.appendingPathComponent("dump").appendingPathComponent(date2)
@@ -129,19 +129,35 @@ func suiteFinalizeParallel() throws {
           "pair before the failure is archived")
     check(fm.fileExists(atPath: dump2.appendingPathComponent("S0001.JPG").path),
           "pair before the failure is dumped")
-    for stem in ["S0002", "S0003"] {
+    checkEqual(try Set(fm.contentsOfDirectory(atPath: dump2.path)), Set(["S0001.JPG"]),
+               "dump after failure holds only the processed prefix")
+    for stem in ["S0002", "S0003", "S0004"] {
         check(fm.fileExists(atPath: folder2.appendingPathComponent("\(stem).JPG").path),
               "\(stem) stays in the inbox")
         check(!fm.fileExists(atPath: arch2.appendingPathComponent("\(stem).JPG").path),
               "\(stem) is not archived")
+        check(!fm.fileExists(atPath: dump2.appendingPathComponent("\(stem).JPG").path),
+              "\(stem) has no dump file")
     }
-    check(!fm.fileExists(atPath: dump2.appendingPathComponent("S0002.JPG").path),
-          "failing pair has no dump file (temp removed, never renamed)")
     check(fm.fileExists(atPath: folder2.path) &&
           fm.fileExists(atPath: folder2.appendingPathComponent(".photocull.json").path),
           "inbox folder and sidecar survive the failure")
     check(tmpFiles(in: dump2).isEmpty && tmpFiles(in: folder2).isEmpty,
           "no .tmp files remain after a failed run")
+
+    // ── Re-run after fixing the bad file: clean names, no _2 duplicates ──
+    try fm.removeItem(at: folder2.appendingPathComponent("S0002.JPG"))
+    try fm.copyItem(at: fx, to: folder2.appendingPathComponent("S0002.JPG"))
+    let res2 = try Finalize.run(cfg: cfg, date: date2, dump: true,
+                                cropMode: .applyCrop, dumpOverride: nil)
+    checkEqual(res2.dumped, 2, "re-run dumps the two remaining keepers")
+    checkEqual(res2.archived, 2, "re-run archives the two remaining keepers")
+    checkEqual(res2.trashed, 1, "re-run trashes the reject that stayed in the inbox")
+    checkEqual(try Set(fm.contentsOfDirectory(atPath: dump2.path)),
+               Set(["S0001.JPG", "S0002.JPG", "S0003.JPG"]),
+               "re-run dump holds exactly the clean names, no _2 suffixes")
+    check(!fm.fileExists(atPath: folder2.path), "re-run removes the inbox folder")
+    check(tmpFiles(in: dump2).isEmpty, "no .tmp files after the successful re-run")
 }
 
 func suiteIngestConcurrent() throws {
@@ -201,7 +217,10 @@ func suiteIngestConcurrent() throws {
     // exactly: the 100A N0001.JPG wins the plain name, the 101B one gets _2,
     // and the RAWs keep their unsuffixed pair names.
     func size(_ name: String) -> Int? {
-        try? Data(contentsOf: inboxDate.appendingPathComponent(name)).count
+        guard let d = try? Data(contentsOf: inboxDate.appendingPathComponent(name)) else {
+            return nil
+        }
+        return d.count
     }
     checkEqual(size("N0001.JPG"), 100, "N0001.JPG holds the 100A copy")
     checkEqual(size("N0001_2.JPG"), 555, "colliding N0001.JPG gets _2 with its own bytes")

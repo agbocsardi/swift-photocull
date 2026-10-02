@@ -189,7 +189,7 @@ public enum Ingest {
             report()
             throw error
         }
- }
+    }
 
     /// All regular files under `source` whose uppercase extension is in `exts`,
     /// sorted by path, with each file's byte size. The size rides the same
