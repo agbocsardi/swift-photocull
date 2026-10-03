@@ -160,8 +160,9 @@ private struct ImageLoadingChecks {
             let loader = ImageLoader(decode: { _, _ in nil }, embedded: { _, _ in preview })
             loader.load(url: url("failure"), maxPixel: 600)
             await eventually({ !loader.isLoading }, "failed decode retires")
-            checks.expect(loader.current === preview && loader.publishedStage == .embeddedPreview && loader.sharpFailed,
-                          "sharp failure remains an explicitly low-quality preview")
+            checks.expect(loader.current == nil && loader.publishedStage == nil && loader.publishedKey == nil,
+                          "sharp failure clears preview and publication identity")
+            checks.expect(loader.sharpFailed && !loader.isLoading, "sharp failure is published and terminal")
         }
 
         // Shared loader admits at most two native jobs and lets the latest demand jump queued warmups.
@@ -184,19 +185,19 @@ private struct ImageLoadingChecks {
             checks.expect(probe.count("queued-5.jpg") == 1, "latest target was not dropped")
         }
 
-        // Thumbnail work has a separate four-job cap and clear rejects old fills.
+        // Non-lazy filmstrip can request every cell once; preserve all queued keys while capping native work.
         do {
-            let gate = Gate(), probe = Probe(), marker = image(0.6)
+            let probe = Probe(), marker = image(0.6)
             let store = ThumbnailStore(decode: { u, _ in
-                probe.start(u.lastPathComponent); _ = gate.wait(); probe.end(); return marker
+                probe.start(u.lastPathComponent); Thread.sleep(forTimeInterval: 0.002)
+                probe.end(); return marker
             })
-            for i in 0..<8 { _ = store.thumbnail(for: url("thumb-\(i)")) }
-            for _ in 0..<4 { await waitForEntry(gate, "thumbnail slot filled") }
+            let urls = (0..<80).map { url("thumb-\($0)") }
+            for item in urls { _ = store.thumbnail(for: item) }
+            await eventually({ urls.allSatisfy { store.cached(for: $0) != nil } }, "all 80 thumbnails complete")
+            checks.expect(urls.allSatisfy { store.cached(for: $0) != nil }, "all requested thumbnails are cached")
+            checks.expect(urls.allSatisfy { !store.isFailed($0) }, "no queued thumbnail is marked failed")
             checks.expect(probe.maxActive <= 4, "thumbnail native concurrency is capped at four")
-            for _ in 0..<4 { gate.release.signal() }
-            for _ in 0..<4 { await waitForEntry(gate, "queued thumbnail admitted") }
-            for _ in 0..<4 { gate.release.signal() }
-            await eventually({ store.cached(for: url("thumb-7")) != nil }, "last thumbnail completes")
         }
         do {
             let gate = Gate(), store = ThumbnailStore(decode: { _, _ in _ = gate.wait(); return image(0.3) })

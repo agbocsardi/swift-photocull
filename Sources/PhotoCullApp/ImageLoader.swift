@@ -8,7 +8,7 @@ final class ImageLoader: ObservableObject {
     @Published private(set) var isLoading = false
     private(set) var publishedKey: String?
     private(set) var publishedStage: Stage?
-    private(set) var sharpFailed = false
+    @Published private(set) var sharpFailed = false
 
     enum Stage: Equatable { case embeddedPreview, sharp }
 
@@ -126,15 +126,17 @@ final class ImageLoader: ObservableObject {
                 || job.prefetchGeneration == generation
             guard useful else { jobs.removeValue(forKey: key); continue }
             job.started = true; active += 1
-            run(job)
+            let previewAtStart = job.key == requestedKey && job.demandGeneration == generation
+            run(job, previewAtStart: previewAtStart)
         }
     }
 
-    private func run(_ job: Job) {
+    private func run(_ job: Job, previewAtStart: Bool) {
         let decode = self.decode
         let embedded = self.embedded
-        Task.detached(priority: job.demandGeneration == generation ? .userInitiated : .utility) {
-            if job.demandGeneration != nil {
+        let priority: TaskPriority = previewAtStart ? .userInitiated : .utility
+        Task.detached(priority: priority) {
+            if previewAtStart {
                 let mayTryPreview = await MainActor.run { self.isCurrent(job) }
                 if mayTryPreview {
                     let preview = embedded(job.url, min(job.maxPixel, 256))
@@ -208,7 +210,7 @@ final class ImageLoader: ObservableObject {
             }
         } else if job.epoch == epoch, jobs[job.key]?.id == job.id,
                   requestedKey == job.key, job.demandGeneration == generation {
-            // Preview may remain visible, but sharp failure is explicit.
+            current = nil; publishedKey = nil; publishedStage = nil
             isLoading = false; sharpFailed = true
         }
         retire(job)
@@ -249,10 +251,7 @@ final class ThumbnailStore: ObservableObject {
         let key = ImageCache.key(url: url, maxPixel: maxPixel)
         if let hit = cache.image(for: key) { return hit }
         guard !failed.contains(key), !queued.contains(key), inFlight[key] == nil else { return nil }
-        if queue.count == 32 {
-            let dropped = queue.removeFirst()
-            queued.remove(dropped.key)
-        }
+        // ponytail: pending URLs are O(requested session cells); bound only after tested visible-window admission.
         queued.insert(key); queue.append((key, url, epoch)); schedule()
         return nil
     }
@@ -266,8 +265,9 @@ final class ThumbnailStore: ObservableObject {
             let jobID = UUID()
             inFlight[request.key] = jobID
             let decode = self.decode
+            let maxPixel = self.maxPixel
             Task.detached(priority: .utility) {
-                let image = decode(request.url, self.maxPixel)
+                let image = decode(request.url, maxPixel)
                 await MainActor.run {
                     self.active -= 1
                     if self.inFlight[request.key] == jobID { self.inFlight.removeValue(forKey: request.key) }
