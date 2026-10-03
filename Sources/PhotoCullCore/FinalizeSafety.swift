@@ -99,8 +99,8 @@ final class FinalizeDirectory {
         guard anchored.sameObject(child.identity) else { throw FinalizeSafetyError("Private directory replaced") }
         return child
     }
-    func removeEmptyChild(_ child: FinalizeDirectory) throws {
-        try verifyVisible(); try child.verifyVisible()
+    func removeEmptyChild(_ child: FinalizeDirectory, requireVisible: Bool = true) throws {
+        if requireVisible { try verifyVisible(); try child.verifyVisible() }
         guard try readIdentity(child.url.lastPathComponent, regular: false).sameObject(child.identity) else {
             throw FinalizeSafetyError("Private directory changed")
         }
@@ -213,18 +213,22 @@ final class FinalizeRecovery {
         }
         guard fsync(progressFD) == 0 else { throw finalizePOSIX("sync progress journal") }
     }
+    var currentPath: String {
+        var bytes = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        return fcntl(fd, F_GETPATH, &bytes) == 0 ? String(cString: bytes) : directory.url.appendingPathComponent(Self.name).path
+    }
     func removeOwned() throws {
         try directory.verifyVisible(); try claims.verifyVisible()
+        // Atomically claim the mutable record name, then verify before deleting ANY recovery metadata.
+        try directory.move(Self.name, to: claims, name: "recovery-metadata")
+        let claimed = try claims.readIdentity("recovery-metadata")
+        guard claimed == identity else {
+            throw FinalizeSafetyError("Recovery record replaced; replacement retained at \(claims.currentPath)/recovery-metadata; owned plan at \(currentPath)")
+        }
         guard try claims.readIdentity(Self.progressName).sameObject(progressIdentity) else {
             throw FinalizeSafetyError("Owned progress journal replaced; retained at \(claims.currentPath)")
         }
         try claims.unlink(Self.progressName)
-        // Atomically claim the mutable record name, then verify before unlinking.
-        try directory.move(Self.name, to: claims, name: "recovery-metadata")
-        let claimed = try claims.readIdentity("recovery-metadata")
-        guard claimed == identity else {
-            throw FinalizeSafetyError("Recovery record replaced; replacement retained at \(claims.currentPath)/recovery-metadata")
-        }
         try claims.unlink("recovery-metadata")
         guard fsync(directory.fd) == 0 else { throw finalizePOSIX("sync record removal") }
     }

@@ -324,7 +324,7 @@ func suiteFinalizeFailureChecks() throws {
         try write(f.input, "A.JPG", original); _ = try sidecar(f)
         let oldRecord = f.root.appendingPathComponent("original-record.json")
         var fired = false
-        _ = failure { _ = try run(f, hooks: FinalizeHooks(boundary: { event, record in
+        let error = failure { _ = try run(f, hooks: FinalizeHooks(boundary: { event, record in
             if event == "recordRemoval" {
                 fired = true; try fm.moveItem(at: record, to: oldRecord); try stranger.write(to: record)
             }
@@ -332,6 +332,8 @@ func suiteFinalizeFailureChecks() throws {
         expect(fired, "record replacement injection fires")
         bytes(try claims(f).appendingPathComponent("recovery-metadata"), stranger, "substituted record retained not deleted")
         expect(fm.fileExists(atPath: oldRecord.path), "original recovery record retained")
+        expect(error.localizedDescription.contains(oldRecord.path), "record substitution reports actual owned plan location")
+        expect(fm.fileExists(atPath: try claims(f).appendingPathComponent(".progress.jsonl").path), "record substitution preserves progress journal")
         bytes(f.archive.appendingPathComponent("A.JPG"), original, "record failure preserves completed prefix")
         try retryBlocked(f)
     }
@@ -395,6 +397,28 @@ func suiteFinalizeFailureChecks() throws {
         bytes(try claims(f).appendingPathComponent("A.JPG"), jpg, "output swap retains claimed original")
         bytes(f.dump.appendingPathComponent("A.JPG"), jpg, "output swap preserves dump prefix")
         try retryBlocked(f)
+    }
+    // Edited output-directory replacement must fail while cleaning stages through the pinned OLD output FD.
+    do {
+        let f = try setup(), stranger = Data([146, 147, 148])
+        let src = f.input.appendingPathComponent("A.JPG"), old = f.root.appendingPathComponent("old-dump")
+        try jpeg(src, red: 0.5)
+        let original = try Data(contentsOf: src)
+        let s = Session.fresh(); s.setCrop("A", CropRect(x: 0.1, y: 0.1, w: 0.8, h: 0.8)); try s.save(folder: f.input)
+        var fired = false
+        let error = failure { _ = try run(f, edited: true, hooks: FinalizeHooks(boundary: { event, _ in
+            if event == "editedPromotion" {
+                fired = true; try fm.moveItem(at: f.dump, to: old)
+                try fm.createDirectory(at: f.dump, withIntermediateDirectories: false)
+                try write(f.dump, "A.JPG", stranger)
+            }
+        })) }
+        expect(fired, "edited output substitution fires")
+        bytes(f.dump.appendingPathComponent("A.JPG"), stranger, "replacement dump marker untouched")
+        bytes(try claims(f).appendingPathComponent("A.JPG"), original, "edited output replacement retains claimed original")
+        expect((try fm.contentsOfDirectory(atPath: old.path)).isEmpty, "old pinned output has no owned export stages after substitution")
+        expect(error.localizedDescription.contains(old.path), "output substitution diagnostics give retained old directory")
+        try noStages(f); try retryBlocked(f)
     }
     // Successful rejects use only the invocation's synthetic native handler, even when it returns no path.
     do {

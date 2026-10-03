@@ -148,7 +148,7 @@ public enum Finalize {
             if let stage = exportDirectory {
                 // Only export outputs belong to this cleanup, never claimed originals.
                 for index in jobs.indices { try? stage.unlink(String(index)) }
-                try? output?.removeEmptyChild(stage)
+                try? output?.removeEmptyChild(stage, requireVisible: false)
             }
         }
         if !jobs.isEmpty {
@@ -246,7 +246,7 @@ public enum Finalize {
                                   cropped: cropped, dumpFolder: dumpURL.path,
                                   retainedFolders: removed ? [] : [input.currentPath])
         } catch {
-            throw FinalizeSafetyError("Finalize stopped: \(error.localizedDescription). Completed prefix may remain. Manual inspect/repair: record \(input.currentPath)/\(FinalizeRecovery.name); claims \(claims.currentPath); archive \(archive.currentPath); dump \(output?.currentPath ?? "disabled"). Do not retry before inspecting these locations.")
+            throw FinalizeSafetyError("Finalize stopped: \(error.localizedDescription). Completed prefix may remain. Manual inspect/repair: record \(record!.currentPath); claims \(claims.currentPath); archive \(archive.currentPath); dump \(output?.currentPath ?? "disabled"). Do not retry before inspecting these locations.")
         }
     }
 
@@ -291,7 +291,7 @@ public enum Finalize {
                                     expected: FinalizeIdentity, hooks: FinalizeHooks) throws {
         try verifyOwned(src, claims: claims, input: input, expected: expected); try output.verifyVisible()
         let stage = try output.privateDirectory(".photocull-stage-")
-        defer { try? stage.unlink("copy"); try? output.removeEmptyChild(stage) }
+        defer { try? stage.unlink("copy"); try? output.removeEmptyChild(stage, requireVisible: false) }
         try hooks.boundary?("copy", stage.url.appendingPathComponent("copy"))
         try verifyOwned(src, claims: claims, input: input, expected: expected)
         try output.verifyVisible(); try stage.verifyVisible()
