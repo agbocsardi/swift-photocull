@@ -102,13 +102,29 @@ private func runNavigationChecks() throws -> Int {
 
     app.open(date: "20240101")
     app.setIndex(1)
-    let badInbox = root.appendingPathComponent("not-a-directory")
-    try Data("file".utf8).write(to: badInbox)
-    app.cfg.paths.inbox = badInbox.path
+    let aFolder = inbox.appendingPathComponent("20240101", isDirectory: true)
+    let aSidecar = aFolder.appendingPathComponent(Session.fileName)
+    let bFolder = inbox.appendingPathComponent("20250101", isDirectory: true)
+    let bSidecar = bFolder.appendingPathComponent(Session.fileName)
+    let bSession = try Session.load(folder: bFolder)
+    let bPairs = try Library.pairs(cfg: cfg, date: "20250101")
+    expect(bSession.lastIndex == 1 && bPairs.count == 2, "incoming B remains fully loadable")
+    let bBytesBefore = try Data(contentsOf: bSidecar)
+    try FileManager.default.removeItem(at: aSidecar)
+    try FileManager.default.createDirectory(at: aSidecar, withIntermediateDirectories: false)
     app.open(date: "20250101")
     expect(app.activeDate == "20240101" && app.index == 1,
            "failed outgoing save aborts replacement and preserves active session")
+    let bBytesAfter = try Data(contentsOf: bSidecar)
+    expect(bBytesAfter == bBytesBefore, "failed A save never changes valid incoming B sidecar")
     expect(app.errorMessage != nil, "save error is surfaced")
+
+    app.setIndex(2)
+    try FileManager.default.removeItem(at: aFolder)
+    app.reloadLibrary()
+    expect(app.activeDate == nil && app.pairs.isEmpty, "reload removal clears active session state")
+    expect(app.imageLoader.current == nil && !app.imageLoader.isLoading,
+           "reload removal clears old image and pending load")
 
     let urlA = URL(fileURLWithPath: "/synthetic/A/P01.JPG")
     let urlB = URL(fileURLWithPath: "/synthetic/B/P01.JPG")

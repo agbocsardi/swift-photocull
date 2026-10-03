@@ -247,13 +247,21 @@ final class AppState: ObservableObject {
     func reloadLibrary() {
         sessions = Library.loadSessions(cfg: cfg)
         if let active = activeDate, !sessions.contains(where: { $0.date == active }) {
-            activeDate = nil
-            pairs = []
-            session = nil
+            clearActiveSession()
         }
         if cursorDate == nil || !sessions.contains(where: { $0.date == cursorDate }) {
             cursorDate = activeDate ?? sessions.first?.date
         }
+    }
+
+    private func clearActiveSession() {
+        persistTask?.cancel()
+        persistTask = nil
+        activeDate = nil
+        pairs = []
+        session = nil
+        info = PhotoInfo()
+        imageLoader.load(url: nil, maxPixel: 0)
     }
 
     // MARK: - Session loading
@@ -719,7 +727,7 @@ final class AppState: ObservableObject {
                     self.finalizeRunning = false
                     self.selectedDates.removeAll()
                     if let d = self.activeDate, dates.contains(d) {
-                        self.activeDate = nil; self.pairs = []; self.session = nil
+                        self.clearActiveSession()
                     }
                     self.reloadLibrary()
                     if let first = self.sessions.first { self.open(date: first.date) }
