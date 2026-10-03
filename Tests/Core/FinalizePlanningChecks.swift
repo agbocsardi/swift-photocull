@@ -38,14 +38,13 @@ func suiteFinalizePlanningChecks() throws {
     guard let outPath = ProcessInfo.processInfo.environment["PC_FINALIZE_TEST_OUT"] else {
         fatalError("PC_FINALIZE_TEST_OUT must name the dedicated output root")
     }
-    let outRoot = URL(fileURLWithPath: outPath).standardizedFileURL
+    let outRoot = URL(fileURLWithPath: outPath)
     let confinementPrefix = outRoot.path.hasSuffix("/") ? outRoot.path : outRoot.path + "/"
     let root = outRoot.appendingPathComponent("synthetic/test-\(UUID().uuidString)", isDirectory: true)
-        .standardizedFileURL
     guard root.path.hasPrefix(confinementPrefix) else { fatalError("synthetic root escaped OUT") }
     try fm.createDirectory(at: root, withIntermediateDirectories: true)
     defer {
-        if root.standardizedFileURL.path.hasPrefix(confinementPrefix) {
+        if root.path.hasPrefix(confinementPrefix) {
             try? fm.removeItem(at: root)
         }
     }

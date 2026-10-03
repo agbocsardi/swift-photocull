@@ -98,6 +98,11 @@ public final class Session {
             throw error
         }
 
+        return try decode(data: data, strict: strict)
+    }
+
+    /// Destructive callers decode the exact bytes captured from their pinned input.
+    package static func decode(data: Data, strict: Bool) throws -> Session {
         guard !data.isEmpty else {
             if strict { throw SidecarError.invalid("empty sidecar") }
             return Session.fresh()
@@ -117,6 +122,14 @@ public final class Session {
         }
         if strict, raw.version != 1 {
             throw SidecarError.invalid("unsupported sidecar version \(raw.version.map(String.init) ?? "missing")")
+        }
+        if strict {
+            for keys in [Array((raw.decisions ?? [:]).keys), Array((raw.crops ?? [:]).keys),
+                         Array((raw.tilts ?? [:]).keys), Array((raw.rotations ?? [:]).keys)] {
+                guard Set(keys.map { $0.uppercased() }).count == keys.count else {
+                    throw SidecarError.invalid("ambiguous case-folded stem keys")
+                }
+            }
         }
         var decisions: [String: Decision] = [:]
         for (k, v) in raw.decisions ?? [:] { decisions[k.uppercased()] = v }
