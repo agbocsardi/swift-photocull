@@ -15,7 +15,8 @@ Parent specifies fixes; openai-codex/gpt-6-luna, high reasoning, implements boun
 - [x] Review Finalize patch: reserved pair-consistent names, one-time inventory, exclusive owned stages/all-exit cleanup; merged 6cdf6a6 after fresh 35+58 checks.
 - [x] Review test-reliability patch: locked collectors, explicit fail-closed suite filter, synthetic concurrent regression; merged da7dea8 after fresh 101 focused checks.
 - [x] Integrate all five approved patches sequentially; rerun focused synthetic app/Core checks and preservation regression on combined source.
-- [ ] Complete follow-up operation ownership/progress/diagnostic gates before clearing Finalize; user-approved remaining safety worker dispatched, see 2026-10-03_finalize-safety_TODO.md.
+- [x] Complete reviewed Finalize ownership/app-progress/metadata/native recovery source fixes and effective failures; Sol6fe4f45 merged745e3b3, see 2026-10-03_finalize-safety_TODO.md.
+- [ ] Resolve separate ingest naming/content/progress, competing PairRepair and HeadlessCheck diagnostic findings; not covered by Finalize safety acceptance.
 - [ ] Add/request native end-to-end metering after caller contracts stabilize; never fabricate paint timings.
 - [x] Build and strictly verify an isolated release bundle after integration checks; do not replace or launch installed/running app.
 - [ ] User-approved install/live navigation/editing/scroll/placeholder feel test; Finalize remains not cleared.
@@ -82,3 +83,10 @@ Parent specifies fixes; openai-codex/gpt-6-luna, high reasoning, implements boun
 - Confirmed luna-load/tests/nav/finalize/render idle; all five checkouts clean including untracked/ignored entries, HEADs reachable from performance, reports present outside checkouts.
 - Removed Herdr worktree workspaces wN/wP/wQ/wR/wS without force, closing their completed agent tabs. Branches/commits and all reports/verification/release artifacts retained. Removal JSON in /private/tmp/photocull-luna-wave-2026-10-03/cleanup/.
 - Remaining PhotoCull checkouts: parent wB and active safety worker wV only. Unrelated website wC/dotfiles wT untouched. Parent root AGENTS.md remains absent; active worker's child-only runtime contract retained. No source/app/data cleanup, release replacement or Finalize use performed.
+
+### 2026-10-03 — remaining Finalize safety source integrated; post-merge verification complete
+
+- Sol corrected6fe4f45 accepted after source review, fresh649 checks, both unchanged original descriptor-reuse probes and effective no-overwrite/early-ingest-completion negative controls. Merged745e3b3; initial516 passing checks did NOT prevent parent returning two proven double-close bugs.
+- Fresh merged-source checks: safety649; loading20; exact edits164; reliability106 (includes repeated63 preservation). Separate canonical outputs and signed/strictly verified candidate: /private/tmp/photocull-parent-integrated-finalize-745e3b3/. Full source/evidence/boundaries in safety tracker and authoritative audit.
+- Installed/dist/running app not replaced or launched. Native GUI/scroll/placeholder, system Trash, physical cross-volume/crash behavior and controlled request-to-paint remain untested. Continue avoiding Finalize in old app. Ingest identity/naming/progress, competing PairRepair, fail-open HeadlessCheck and large-filmstrip eviction healing remain separate follow-ups.
+- Completed safety worker's temporary AGENTS.md archived with report and removed; checkout clean. Owned wV removal awaits approval; preserve branch/report. Parent root remains absent.

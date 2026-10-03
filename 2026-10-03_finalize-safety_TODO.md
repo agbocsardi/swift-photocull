@@ -10,15 +10,17 @@
 - [x] Review/reject Luna partial c03e329; source claims/no-overwrite/app/failure gates incomplete, not integrated.
 - [x] User authorizes 6.1 Sol escalation; relaunch same pane/worktree with parent review/native protocol handoff.
 - [x] Receive Sol progress report/Core checkpoint; 503 worker-reported focused checks, not completion or parent verification.
-- [ ] Review Sol's completed diff, native identity/claim/recovery boundaries and effective failure injection; return defects instead of accepting worker counts.
-- [ ] Independently run focused synthetic Finalize/Core/AppState and prior navigation/planning/preservation checks from fresh separate canonical outputs; no Trash/GUI/user inputs.
-- [ ] Integrate reviewed source, update authoritative audit and first-wave tracker with actual evidence and remaining limits.
-- [ ] Rebuild/verify isolated candidate only after integration. Installed/dist/running app unchanged unless user authorizes replacement.
-- [ ] Remove child's temporary AGENTS.md after review; close/remove ONLY owned worktree after user approval, preserve commits/report.
+- [x] Review Sol's completed diff, native identity/claim/recovery boundaries and effective failure injection; return defects instead of accepting worker counts.
+- [x] Independently run focused synthetic Finalize/Core/AppState and prior navigation/planning/preservation checks from fresh separate canonical outputs; no Trash/GUI/user inputs.
+- [x] Integrate reviewed source, update authoritative audit and first-wave tracker with actual evidence and remaining limits.
+- [x] Rebuild/verify isolated candidate only after integration. Installed/dist/running app unchanged unless user authorizes replacement.
+- [x] Remove child's temporary AGENTS.md after review; archive its exact contract with reports.
+- [ ] Close/remove ONLY completed owned worktree wV after user approval; preserve branch/commits/report.
+- [ ] User-authorized app replacement and native/live acceptance; no real Trash/physical cross-volume/GUI clearance from synthetic checks.
 
 ## Dispatch
 
-- Parent wB:p1 / wB; active child sol-finalize-safety / wV:p1 / wV:t1 / workspace wV, openai-codex/gpt-6.1-sol --thinking high. Previous luna-finalize-safety exited; partial commit/report preserved.
+- Parent wB:p1 / wB; completed child sol-finalize-safety / wV:p1 / wV:t1 / workspace wV, openai-codex/gpt-6.1-sol --thinking high. Previous luna-finalize-safety exited; partial commit/report preserved. Final6fe4f45 reviewed and merged745e3b3; clean worker checkout retained pending cleanup approval.
 - Branch fix/luna-finalize-safety; checkout /Users/agbocsardi/.herdr/worktrees/swift-photocull/fix-luna-finalize-safety.
 - Initial base 130f04024889c5af23b7cf92d49d2a5690ec710e; Sol starts from committed unaccepted partial c03e329e7cc7f252cff271a083b9526b1ee24cb6. Parent source unchanged; no focus switch.
 - Original assignment: /private/tmp/photocull-finalize-safety-2026-10-03/assignment.txt. Current handoff: /private/tmp/photocull-finalize-safety-2026-10-03/sol/handoff.txt; report: sol/report.md. Exact inputs/runtimes/preflight/outputs/permissions are also in updated child-only AGENTS.md.
@@ -32,7 +34,7 @@
 - Recovery record blocks silent retries after partial failure/crash; initially manual recovery, no crash-idempotence/automatic rollback promise.
 - Shared in-app gate and cooperating Finalize advisory lock are not immunity to malicious/uncoordinated writers. Parent reviews exact supported boundary before clearing Finalize.
 - Fixed export cap two/autoreleasepool is conservative policy; no invented throughput/latency/peak-memory claim.
-- Existing first-wave candidate remains uninstalled; keep avoiding Finalize until review and integration checks finish.
+- Review and integration checks are complete for source745e3b3. Updated signed candidate remains uninstalled; installed/dist/running app unchanged. Keep avoiding Finalize in the old app; native/live acceptance requires separate authorization.
 
 ## Log
 
@@ -56,3 +58,18 @@
 - Read sol/progress-2026-10-03.md; matched agent sol-finalize-safety / pane wV:p1. Confirmed committed Core checkpoint 5021305bbc5886d85c272447b192021a12b2fdc9 exists; not reviewed/merged. App/delegate work remains uncommitted per report.
 - Worker reports fresh full release and503 focused checks (63 preservation +35 planning +278 Core failure/race +105 app ownership +22 navigation), exit0, at worker/sol-app-checkpoint-01/check.log. Counts/coverage are worker evidence, NOT independently verified parent acceptance.
 - Worker reports correcting post-drain directory-lock lifetime, recursive cursor observer and flush-erased failure fixture. Remaining: final diff review, app commit, fresh committed-source rerun/final report. No concrete blocker; no additional prompt/poll/interruption sent. Parent awaits completion for independent review/checks; source/app unchanged, Finalize not cleared.
+
+### 2026-10-03 — parent rejects completed checkpoint; descriptor regressions returned
+
+- Reviewed2476dc6 and independently passed516 fresh checks, but actual-source syscall-forwarding probes proved double-close in initialized FinalizeDirectory contention and FinalizeRecovery write/sync failure constructors. Immediate descriptor reuse closed unrelated generated marker files. Both original probes exited133; review returned, merge held. No user-photo loss established.
+- Review artifacts/probes/return prompt: /private/tmp/photocull-parent-safety-review-2476dc6/. Required exactly-once ownership checks for every constructor throw path and injected EXDEV inside the real archive native move/catch, including copy/promotion collisions and post-promotion owned-unlink failure. Physical mounts/Trash remained prohibited.
+
+### 2026-10-03 — corrected source accepted, merged and independently integration-checked
+
+- Sol6fe4f45 corrects constructor ownership and adds actual-source syscall instrumentation plus executed archive EXDEV fallback checks. Parent reread source/tests/report, independently rebuilt full release and passed649 checks:63 preservation +35 planning +385 Core failure/race/EXDEV +39 descriptor +105 AppState operation +22 navigation.
+- Both UNCHANGED original parent probes now pass: contending input descriptor closes exactly once; failed recovery initialization closes each descriptor exactly once; immediately reused unrelated markers remain open. Fresh review evidence: /private/tmp/photocull-parent-safety-review-6fe4f45/.
+- Effective negative controls on separate frozen6fe4f45 sources: removing RENAME_EXCL fails real native refusal regression (exit133); trusting ingest's early p.done fails AppState CHECK70 before actual task completion (exit133). Diagnostic printing added only to frozen check copies. Negative artifacts/logs retained under review root; worker/parent source unmodified by controls.
+- Accepted and merged as745e3b3. Fresh POST-MERGE full release/safety649 + image-loading20 + edit-render164 + reliability106 (19 concurrent ingest +63 repeated preservation +21 collector/cleanup +3 invalid CLI cases) all pass, no unfiltered suite. Separate canonical scratch/cache/config/security/module outputs: /private/tmp/photocull-parent-integrated-finalize-745e3b3/{safety,loading,render,reliability}/check.log.
+- Ad-hoc signed and codesign --verify --deep --strict verified candidate: /private/tmp/photocull-parent-integrated-finalize-745e3b3/release/PhotoCull.app. Original plist/icon/menu resources retained; plist lint passes. source-commit.txt/executable.sha256 identify candidate. No installed/dist/running app replacement or launch.
+- Exact child-only AGENTS.md archived as sol/runtime-contract-reviewed.md plus SHA256, then removed; worker checkout clean at6fe4f45. Parent root remains absent. Worker tab/worktree/branch/report retained pending cleanup approval.
+- Remaining boundaries: actual system Trash, genuine cross-volume filesystem behavior, GUI/delegate integration and crash recovery are untested; injected EXDEV proves real fallback sequence, not hardware. Sidecars/original-bearing claims retained; recovery is manual and blocks silent retry, not automatic rollback. Native advisory locks/private namespaces do not exclude hostile/uncoordinated writers. No new UI timing/RSS/throughput claim.

@@ -51,6 +51,65 @@ Native scroll/placeholder presentation needs live acceptance. Continue avoiding
 Finalize until remaining safety gates are handled. Temporary root `AGENTS.md`
 removed as requested; tracked Git history retains the runtime contract.
 
+### Finalize safety follow-up — reviewed and integrated
+
+Sol (`openai-codex/gpt-6.1-sol --thinking high`) completed the parent-designed
+native safety protocol on `fix/luna-finalize-safety`; corrected source `6fe4f45`
+is merged as **`745e3b3`**. Tracker: `2026-10-03_finalize-safety_TODO.md`.
+This status supersedes the first-wave unresolved Finalize gates above, NOT the
+separate ingest/repair/diagnostic findings or live release/measurement limits.
+
+- One in-app operation owner spans preparation/consent through actual native
+  completion; token/context validation rejects stale summaries and progress.
+  Early ingest `p.done` cannot release admission. Mutation, undo and native
+  delegate quit gates cover active work. Fresh strict metadata reads precede
+  permissive UI persistence; sidecars remain after Finalize.
+- Native pinned directory FDs + BSD flock serialize cooperating Finalize runs.
+  Identity-checked original claims precede effects; pair members verify together.
+  Exclusive native promotions/restores do not overwrite outsiders. Orphans use
+  the same protocol. Archive EXDEV fallback copies to a private stage, promotes
+  exclusively, then removes only its owned source. Export width is capped at
+  two with autorelease pools and stop-on-failure admission, not a measured optimum.
+- Durable exclusive recovery plan/progress and original-bearing claims survive
+  partial failures; retry fails closed for manual recovery. No recursive inbox
+  cleanup, automatic rollback or crash-idempotence claim. Advisory locks/private
+  namespace assumptions do not exclude hostile/uncoordinated writers.
+
+Parent initially passed **516 checks** on `2476dc6` but rejected it after two
+actual-source descriptor-reuse probes proved initialized constructors closed
+FDs twice, potentially closing unrelated I/O. Corrected constructors have one
+owner; both unchanged original probes now pass. No user-photo loss established.
+
+Fresh committed-source AND post-merge release runs each passed **649 checks**:
+63 preservation,35 planning,385 Core failure/race/EXDEV,39 descriptor,105 app
+ownership and22 navigation. The injected EXDEV is inside the real native
+move/catch; tests execute copy, exclusive promotion and owned-source unlink,
+including actual Foundation copy collision, regular/dangling destination
+collisions and native unlink failure after promotion. This is fallback-algorithm
+coverage, **not genuine cross-volume filesystem evidence**.
+
+Independent frozen-source negative controls fail with exit133 when RENAME_EXCL
+is removed or early ingest terminal progress releases the app gate. Original
+probe/control evidence: `/private/tmp/photocull-parent-safety-review-6fe4f45/`.
+Post-merge image-loading20, exact edit-render164 and reliability106 also pass
+(the reliability run repeats63 preservation checks). Logs/builds use separate
+canonical outputs at `/private/tmp/photocull-parent-integrated-finalize-745e3b3/`.
+No unfiltered legacy suite, GUI, real config/library/photos/mounts/Trash ran.
+
+**Latest signed/strictly-verified isolated candidate:**
+`/private/tmp/photocull-parent-integrated-finalize-745e3b3/release/PhotoCull.app`;
+source commit and executable SHA256 beside it. Older first-wave candidate and
+reports are retained. **Installed/dist/running app still unchanged: do not
+assume the new safeguards are present there; keep avoiding its Finalize.**
+Source acceptance is not installation or clearance for live destructive use.
+Actual system Trash, physical cross-volume behavior, GUI/delegate integration,
+manual crash recovery and native scroll/placeholder feel remain untested.
+No controlled input-to-paint, throughput or app-memory measurement added.
+
+Child-only temporary runtime instructions were archived with report then
+removed; parent root `AGENTS.md` remains absent. Completed clean safety
+worktree/tab retained pending user cleanup approval, branch/report preserved.
+
 ### Original review findings (baseline gates; status above)
 
 1. **Original preservation is urgent.** Finalize recursively deletes its inbox

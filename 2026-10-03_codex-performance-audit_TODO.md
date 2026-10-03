@@ -15,7 +15,7 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - [x] Integrate evidence/test-coverage report; source/capability logs and raw measurement summary inspected.
 - [x] Evaluate/integrate urgent finalize-safety-impl patch: empty-only cleanup, residue preservation, parent fresh-release dedicated no-Trash tests.
 - [x] Build/verify isolated release candidate with all five reviewed Luna fixes; installed/dist/running app unchanged. User-approved install/feel test remains in Luna tracker.
-- [ ] Resolve remaining destructive-operation ownership/external-writer/sidecar and failure-test gates before treating Finalize as cleared; pair names/private stages/all-exit cleanup fixed in Luna wave.
+- [x] Resolve reviewed cooperating-operation ownership/sidecar/native claim/no-overwrite/failure-test source gates; corrected Sol6fe4f45 merged745e3b3 after fresh649 checks and effective negative controls. Hostile/uncoordinated writers remain unsupported; actual Trash/cross-volume/GUI and installation clearance remain in safety/Luna trackers.
 - [x] Reject unvalidated step-snappy experiment instead of shipping its timer/neighbour-planner defects; retained branch, baseline immediate-open path corrected in Luna wave.
 - [x] Consolidate findings into docs/performance-audit.md; distinguish measured/source-proven/hypothesis.
 - [x] Propose ranked implementation scope and dispatch approved parent-designed Luna fixes in five isolated worktrees; implementation tracked in 2026-10-03_luna-performance-fixes_TODO.md.
