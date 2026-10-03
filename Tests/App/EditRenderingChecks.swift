@@ -44,6 +44,13 @@ private final class StageAffinity: @unchecked Sendable {
     var snapshot: [(String, Bool)] { lock.withLock { observations } }
 }
 
+private final class StartCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = 0
+    var value: Int { lock.withLock { _value } }
+    func increment() { lock.withLock { _value += 1 } }
+}
+
 private final class Gate: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Never>?
@@ -163,6 +170,41 @@ struct EditRenderingChecks {
         check(gate.maximumActive == 1, "at most one transform active")
         controlled.reset()
         check(controlled.ready == nil, "reset clears published result")
+
+        let reuseGate = Gate()
+        let starts = StartCount()
+        let reuseRenderer = EditRenderer { request, _, _ in
+            starts.increment()
+            if request.key.quarterTurns == 2 { await reuseGate.pause() }
+            return request.source
+        }
+        let a = req(1), b = req(2), c = req(3)
+        reuseRenderer.submit(a)
+        let aReady = ContinuousClock.now + .seconds(3)
+        while reuseRenderer.ready?.key != a.key && ContinuousClock.now < aReady {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        check(reuseRenderer.ready?.key == a.key && starts.value == 1, "A is rendered once and ready")
+        reuseRenderer.submit(b)
+        let bStarted = ContinuousClock.now + .seconds(3)
+        while reuseGate.starts == 0 && ContinuousClock.now < bStarted {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        check(reuseGate.starts == 1 && reuseRenderer.isRendering, "B runs while A remains ready")
+        reuseRenderer.submit(c)
+        reuseRenderer.submit(a)
+        check(reuseRenderer.ready?.key == a.key && reuseRenderer.ready?.image === a.source,
+              "return to A immediately reuses the retained ready result")
+        check(starts.value == 2 && reuseRenderer.isRendering,
+              "returning to ready A clears C without starting another worker")
+        reuseGate.release()
+        let bFinished = ContinuousClock.now + .seconds(3)
+        while reuseRenderer.isRendering && ContinuousClock.now < bFinished {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        check(!reuseRenderer.isRendering && starts.value == 2, "stale B finishes without running C or A again")
+        check(reuseRenderer.ready?.key == a.key && reuseRenderer.ready?.image === a.source,
+              "stale B cannot replace ready A")
 
         let resetGate = Gate()
         let resetRenderer = EditRenderer { request, _, _ in

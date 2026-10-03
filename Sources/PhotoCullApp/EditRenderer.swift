@@ -44,8 +44,16 @@ final class EditRenderer: ObservableObject {
     }
 
     func submit(_ request: EditRenderRequest) {
+        if ready?.key == request.key {
+            if desiredKey != request.key {
+                serial += 1
+                desiredKey = request.key
+                pending = nil
+            }
+            return
+        }
         if desiredKey == request.key {
-            if ready?.key == request.key || running && pending?.key != request.key { return }
+            if running && pending?.key != request.key { return }
             if pending?.key == request.key { return }
         }
         serial += 1
