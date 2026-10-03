@@ -14,7 +14,7 @@ Reports and reproducibility artifacts:
 Dispatch/progress: `2026-10-03_codex-performance-audit_TODO.md`. Probe files in
 `/tmp` are temporary; preserve approved artifacts before relying on them later.
 
-### Implementation status — first Luna wave
+### Implementation status — first Luna wave complete
 
 Parent-specified fixes, implemented by `openai-codex/gpt-6-luna --thinking high`,
 are tracked in `2026-10-03_luna-performance-fixes_TODO.md`. After returning
@@ -33,14 +33,23 @@ concrete review defects and rebuilding in fresh parent-owned output:
   sharp failure; 20 actual SwiftUI/AppKit model checks. Queued thumbnail URLs
   intentionally stay O(requested cells): dropping at 32 broke one-shot mounted
   requests. Large-filmstrip eviction/virtualization is still a follow-up.
-- Renderer isolation/pixels independently verified (158 checks plus a failing
-  actor-isolation negative control); final ready-result reuse correction pending.
-  Not yet merged; combined loader+renderer regression/release build still due.
+- `c2b94a8`: exact settled edits off-main, one-running/latest-pending work,
+  retained source identity and ready-result reuse on reversal; fresh164 checks.
+  Parent also verified a failing actor-isolation negative control.
 
-**No app bundle replaced, GUI/real-library/Trash test or end-to-end timing run.**
+Combined-source checks passed: loading20, edits164, navigation22, planning35+58
+preservation, reliability101 (includes the same58 preservation assertions).
+These are focused/model checks, NOT a whole-suite or measured UI speedup. One
+shared-OUT integration attempt hit a compiler PCM alias conflict between /tmp
+and /private/tmp; separate canonical output directories passed the rerun.
+
+A signed/strictly-verified release candidate is prepared at
+`/private/tmp/photocull-parent-integrated-c2b94a8/release/PhotoCull.app`, with
+source commit and executable hash beside it. **Installed/dist/running app not
+replaced or launched; no GUI/real-library/Trash or end-to-end timing run.**
 Native scroll/placeholder presentation needs live acceptance. Continue avoiding
-Finalize until remaining safety gates are handled. Temporary `AGENTS.md` will be
-removed at the end of the reviewed implementation wave as the user requested.
+Finalize until remaining safety gates are handled. Temporary root `AGENTS.md`
+removed as requested; tracked Git history retains the runtime contract.
 
 ### Original review findings (baseline gates; status above)
 
@@ -50,8 +59,8 @@ removed at the end of the reviewed implementation wave as the user requested.
    empty-only-removal fix `9fa65c0` is merged as `d039718`: known residue keeps
    its sidecar; kernel rmdir cannot recursively delete late arrivals. Parent's
    fresh release build passed 58/58 synthetic no-Trash checks, and the worker's
-   debug binary passed the same focused rerun. The app bundle has not been
-   rebuilt/replaced in this review. Late arrivals may still lose the sidecar
+   debug binary passed the same focused rerun. Installed/running bundle status
+   and the newer isolated release candidate are described above. Late arrivals may still lose the sidecar
    between listing and unlink; external path replacement is not addressed.
    No loss in the user's library is established. **Avoid Finalize for now.**
    Destination probes also fail to reserve names, can split pair suffixes,

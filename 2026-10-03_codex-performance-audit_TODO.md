@@ -14,9 +14,9 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - [x] Integrate I/O/concurrency report; urgent preservation patch dispatched separately.
 - [x] Integrate evidence/test-coverage report; source/capability logs and raw measurement summary inspected.
 - [x] Evaluate/integrate urgent finalize-safety-impl patch: empty-only cleanup, residue preservation, parent fresh-release dedicated no-Trash tests.
-- [ ] Rebuild/verify release app bundle with approved fixes before any user feel test; current merge does not update installed/running app.
-- [ ] Resolve remaining destructive-operation safety findings (unique pair-consistent names/stages, all-exit cleanup, operation ownership) before treating Finalize as cleared for use.
-- [ ] Resolve step-snappy review findings before merging/shipping that branch.
+- [x] Build/verify isolated release candidate with all five reviewed Luna fixes; installed/dist/running app unchanged. User-approved install/feel test remains in Luna tracker.
+- [ ] Resolve remaining destructive-operation ownership/external-writer/sidecar and failure-test gates before treating Finalize as cleared; pair names/private stages/all-exit cleanup fixed in Luna wave.
+- [x] Reject unvalidated step-snappy experiment instead of shipping its timer/neighbour-planner defects; retained branch, baseline immediate-open path corrected in Luna wave.
 - [x] Consolidate findings into docs/performance-audit.md; distinguish measured/source-proven/hypothesis.
 - [x] Propose ranked implementation scope and dispatch approved parent-designed Luna fixes in five isolated worktrees; implementation tracked in 2026-10-03_luna-performance-fixes_TODO.md.
 - [x] Clean up owned reviewer tabs and completed/stale worktrees after integration and user confirmation; preserve branches/reports.

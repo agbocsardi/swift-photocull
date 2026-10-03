@@ -11,15 +11,16 @@ Parent specifies fixes; openai-codex/gpt-6-luna, high reasoning, implements boun
 - [x] Launch all five independent implementers in committed-base Herdr worktrees, no focus change; startup model argv verified and prompts submitted.
 - [x] Review loading patch: correct-photo identity, shared full-key decode, bounded native work, embedded-only stage; fresh native 20-check parent run passed745ecfe; merged f9c7792.
 - [x] Review navigation patch: outgoing persistence, same-index session scroll, redundant boundary work; no added debounce; merged a05a917 after fresh 22-check verification.
-- [ ] Finish render review: corrected isolation/fidelity independently verified; final ready-result reuse/backtrack correction pending before merge.
+- [x] Finish render review: corrected isolation/fidelity, ready reuse/backtrack independently verified; merged c2b94a8 after fresh164 checks.
 - [x] Review Finalize patch: reserved pair-consistent names, one-time inventory, exclusive owned stages/all-exit cleanup; merged 6cdf6a6 after fresh 35+58 checks.
 - [x] Review test-reliability patch: locked collectors, explicit fail-closed suite filter, synthetic concurrent regression; merged da7dea8 after fresh 101 focused checks.
-- [ ] Integrate approved patches sequentially; rerun focused synthetic app/Core checks and preservation regression.
+- [x] Integrate all five approved patches sequentially; rerun focused synthetic app/Core checks and preservation regression on combined source.
 - [ ] Complete follow-up operation ownership/progress/diagnostic gates before clearing Finalize.
 - [ ] Add/request native end-to-end metering after caller contracts stabilize; never fabricate paint timings.
-- [ ] Rebuild release bundle only after integration review and focused checks; request authorized live feel test.
+- [x] Build and strictly verify an isolated release bundle after integration checks; do not replace or launch installed/running app.
+- [ ] User-approved install/live navigation/editing/scroll/placeholder feel test; Finalize remains not cleared.
 - [ ] Clean newly owned worktrees/tabs only after user approval and review.
-- [ ] Remove temporary root AGENTS.md once the whole implementation wave is complete and reviewed (explicit user request).
+- [x] Remove temporary root AGENTS.md after all five implementation patches are complete, reviewed and integration-checked (explicit user request).
 
 ## Fixed design / boundaries
 
@@ -66,3 +67,12 @@ Parent specifies fixes; openai-codex/gpt-6-luna, high reasoning, implements boun
 - Parent builds/scripts use fresh separate OUT dirs; only reviewed synthetic/filtered checks executed. No GUI/real config/user library/Trash/unfiltered tests and no dist replacement. Release app remains unchanged; continue avoiding Finalize. Root AGENTS.md stays temporary until the whole wave is complete and reviewed.
 - Final loader script correction745ecfe builds the full library product and makes barrier timeouts fail (not silently complete). Parent brand-new /tmp/photocull-parent-loading-review-745ecfe full release + real SwiftUI/AppKit runner passed20, no skips; loader accepted for merge.
 - Final renderer flow correction requested: ready A→B rendering→C pending→A must reuse exact retained ready A, drop obsolete pending, keep actual running flag until B drains and start no redundant A native job. This was missed because ready cache check depended on desiredKey. d3c9f6f remains held until that small regression/change reports.
+
+### 2026-10-03 — reviewed wave complete; integration checked; temporary instructions removed
+
+- luna-render wS:p1 final5441cc9 read/diff-reviewed; parent fresh /tmp/photocull-parent-render-review-5441cc9 passed164. Matching ready-key branch precedes desired-key dedup; stale pending cleared without pretending running work stopped. Combined loader already merged, renderer integrated as c2b94a8. All five dispatched assignments now complete; no child reports outstanding.
+- Parent integration source c2b94a8: image-loading20 and edit-rendering164 passed. First shared-OUT attempt then failed navigation standalone compile due duplicate _DarwinFoundation1 PCM paths under /tmp versus canonical/private/tmp (compiler signal11), not an app assertion failure. Failure logs retained. Do not share mixed canonical module-cache paths across standalone/SwiftPM scripts.
+- Reran remaining scripts on SAME combined source with separate canonical OUT dirs under /private/tmp/photocull-parent-integrated-c2b94a8: navigation-check22; finalize-check35+58; reliability-check19+58+21+3 invalidCLI. All passed, no skips. Logs in each OUT/check.log; image-loading.log/edit-rendering.log and source-commit.txt in integration root. Full isolated release products also compiled successfully. No unfiltered suite/GUI/real config/library/Trash used.
+- Prepared isolated release bundle /private/tmp/photocull-parent-integrated-c2b94a8/release/PhotoCull.app from combined-source release product, original plist/icon/menu image. Ad-hoc codesign and codesign --verify --deep --strict succeeded; executable.sha256/source-commit.txt record identity. Did NOT overwrite dist, installed app, or launch it. Native scroll/placeholder UI and actual request-to-paint latency remain unmeasured.
+- User-requested temporary AGENTS.md removed; Git preserves its operational contract in e2ce9c8. Future safety/measurement scope stays in this tracker/docs and requires a fresh bounded assignment, not stale root boilerplate.
+- Finalize not cleared: app operation ownership/progress/diagnostic and external-writer/sidecar issues remain follow-ups, not hidden by passing focused checks. Keep avoid-Finalize guidance. New five worktrees/tabs retained until user authorizes cleanup; all branches/reports retained.
