@@ -19,7 +19,7 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - [ ] Resolve step-snappy review findings before merging/shipping that branch.
 - [x] Consolidate findings into docs/performance-audit.md; distinguish measured/source-proven/hypothesis.
 - [ ] Propose ranked implementation scope, then delegate any approved edits in isolated worktrees.
-- [ ] Clean up owned reviewer tabs after integration and user confirmation.
+- [x] Clean up owned reviewer tabs and completed/stale worktrees after integration and user confirmation; preserve branches/reports.
 
 ## Dispatch registry
 
@@ -97,3 +97,10 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - Parent executed fresh release binary --finalize-safety-only:58/58; separately reran worker debug binary same filter:58/58. Logs build.log/tests-release.log/tests-worker-debug.log in parent review directory. No fixture/skip/reject/Trash/GUI/real-config execution; no unfiltered suite or shared .build writes. git diff --check clean.
 - Merged as d039718 with WHY message. Source safety improvement only: release app bundle not rebuilt/replaced in this review. Continue avoiding Finalize until broader naming/staging/ownership safety findings are handled; do not claim preservation of concurrent sidecar writes or all filesystem identities.
 - All dispatched children now reported. No outstanding child reports; step-snappy remains unmerged. Worktrees/tabs retained pending user approval; next implementation scope/model awaits direction.
+
+### 2026-10-03 — user-approved cleanup
+
+- User explicitly requested cleanup first. Verified all eight owned children done and all three worktrees clean, including untracked-file status; removed nothing by force.
+- Closed reviewer tabs wB:t9/wB:tA/wB:tB/wB:tC/wB:tD. Removed Herdr worktree workspaces wJ/wK/wM (step-opens, unmerged step-snappy, merged preservation hotfix). Parent wB:p1/wB:t1 and unrelated website workspace untouched.
+- Retained branches feature/step-opens-session@b71efdb, perf/step-snappy@e9c6b64, fix/finalize-preserve-originals@9fa65c0. Audit/probe reports remain in /tmp/photocull-codex-audit-222741b and /tmp/finalize-safety-impl; parent focused review logs remain in /tmp/photocull-parent-finalize-review-9fa65c0. No report-directory cleanup requested/performed.
+- git worktree list now contains only the original checkout; parent status clean before bookkeeping. No new agents dispatched yet. User considering parent-designed, narrowly specified fixes implemented by openai-codex/gpt-6-luna instead of Sol; model catalog confirms Luna exists and supports reasoning.
