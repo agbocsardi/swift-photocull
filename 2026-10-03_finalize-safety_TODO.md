@@ -9,6 +9,7 @@
 - [x] Start luna-finalize-safety / wV:p1, submit exact assignment, record readiness/acceptance.
 - [x] Review/reject Luna partial c03e329; source claims/no-overwrite/app/failure gates incomplete, not integrated.
 - [x] User authorizes 6.1 Sol escalation; relaunch same pane/worktree with parent review/native protocol handoff.
+- [x] Receive Sol progress report/Core checkpoint; 503 worker-reported focused checks, not completion or parent verification.
 - [ ] Review Sol's completed diff, native identity/claim/recovery boundaries and effective failure injection; return defects instead of accepting worker counts.
 - [ ] Independently run focused synthetic Finalize/Core/AppState and prior navigation/planning/preservation checks from fresh separate canonical outputs; no Trash/GUI/user inputs.
 - [ ] Integrate reviewed source, update authoritative audit and first-wave tracker with actual evidence and remaining limits.
@@ -49,3 +50,9 @@
 - Additional parent findings: process-associated fcntl lock does not exclude same-process runs; cleanup attempted before its own recovery/lock file removal; blind recovery pathname unlink; sidecar try? absence/error conflation; unchecked orphan moves; all exports admitted up front; script tied to worker OUT path; preparation unlocks before consent and public mutation/delegate gates absent. Handoff includes exact native protocol/cross-volume no-overwrite stages, effective boundary tests and strict AppState pre-flush validation (permissive load+flush must not erase malformed sidecar).
 - User explicitly authorized gpt-6.1-sol for harder work. Auth ready, offline catalog confirms exact model ID. Exited idle Luna using documented /quit; agent_not_found confirmed it no longer hosted the pane. Relaunched sol-finalize-safety in SAME wV:p1, same committed branch; exact argv pi --provider openai-codex --model gpt-6.1-sol --thinking high confirmed, prompt accepted. No new checkout/tab or focus switch.
 - Preserved old report as report-luna-c03e329.md; sol/{handoff.txt,quit-luna.json,start.json,prompt.json} record escalation. Updated child-only AGENTS.md identity/model/outputs; parent root still absent. Sol must finish Core first, then app guards/tests, and report exact remaining boundaries. Parent awaits result without polling.
+
+### 2026-10-03 — Sol progress, not completion
+
+- Read sol/progress-2026-10-03.md; matched agent sol-finalize-safety / pane wV:p1. Confirmed committed Core checkpoint 5021305bbc5886d85c272447b192021a12b2fdc9 exists; not reviewed/merged. App/delegate work remains uncommitted per report.
+- Worker reports fresh full release and503 focused checks (63 preservation +35 planning +278 Core failure/race +105 app ownership +22 navigation), exit0, at worker/sol-app-checkpoint-01/check.log. Counts/coverage are worker evidence, NOT independently verified parent acceptance.
+- Worker reports correcting post-drain directory-lock lifetime, recursive cursor observer and flush-erased failure fixture. Remaining: final diff review, app commit, fresh committed-source rerun/final report. No concrete blocker; no additional prompt/poll/interruption sent. Parent awaits completion for independent review/checks; source/app unchanged, Finalize not cleared.
