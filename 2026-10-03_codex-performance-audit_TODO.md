@@ -18,7 +18,7 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - [ ] Resolve remaining destructive-operation safety findings (unique pair-consistent names/stages, all-exit cleanup, operation ownership) before treating Finalize as cleared for use.
 - [ ] Resolve step-snappy review findings before merging/shipping that branch.
 - [x] Consolidate findings into docs/performance-audit.md; distinguish measured/source-proven/hypothesis.
-- [ ] Propose ranked implementation scope, then delegate any approved edits in isolated worktrees.
+- [x] Propose ranked implementation scope and dispatch approved parent-designed Luna fixes in five isolated worktrees; implementation tracked in 2026-10-03_luna-performance-fixes_TODO.md.
 - [x] Clean up owned reviewer tabs and completed/stale worktrees after integration and user confirmation; preserve branches/reports.
 
 ## Dispatch registry
