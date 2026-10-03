@@ -10,75 +10,32 @@ struct ImagePane: View {
     @EnvironmentObject var canvas: CanvasState
     /// Keyboard focus on the tilt slider: arrows then nudge tilt.
     @FocusState private var tiltFocused: Bool
-    /// 1-slot memo for the CPU edit pipeline (see `memoizedDisplayImage`).
-    @StateObject private var memo = EditMemo()
+    @StateObject private var renderer = EditRenderer()
 
-    /// Everything the CPU-rendered bitmap depends on. In crop mode the CPU
-    /// path stops after the quarter turn — live tilt is a GPU transform —
-    /// so the key deliberately reads the CPU tilt/crop as unused there and
-    /// slider ticks leave the memo valid.
-    private struct EditKey: Equatable {
-        var image: ObjectIdentifier?
-        var quarterTurns: Int
-        var cpuTilt: Double
-        var crop: CropRect?
-        var cropMode: Bool
-        var showCroppedPreview: Bool
+    private var renderRequest: EditRenderRequest? {
+        guard let source = loader.current else { return nil }
+        let cpuTilt = app.cropMode ? 0 : app.currentTilt
+        let crop = !app.cropMode && app.showCroppedPreview ? app.currentCrop : nil
+        let key = EditRenderKey(source: source, url: app.currentPair?.jpg,
+                                quarterTurns: app.currentQuarterTurns, cpuTilt: cpuTilt, crop: crop)
+        return EditRenderRequest(key: key, source: source)
     }
 
-    private final class EditMemo: ObservableObject {
-        var key: EditKey?
-        var image: CGImage?
-    }
-
-    /// What the pane draws: the exact edit pipeline the export runs
-    /// (quarter turn → tilt → crop), so preview == output. Memoized to a
-    /// single slot keyed on the pipeline inputs, so body evaluations that
-    /// change nothing the bitmap depends on (pan/zoom drags, hover, toasts)
-    /// reuse the previous CGImage instead of resampling ~45 MB per frame.
-    /// In crop mode the CPU work stops after the quarter turn; the live tilt
-    /// renders on the GPU (see body). Committing leaves crop mode, which
-    /// changes the key and runs the real CPU pipeline once for the settled
-    /// state — keeping at-rest pixels identical to the export.
-    private func memoizedDisplayImage() -> CGImage? {
-        guard let current = loader.current else {
-            if memo.key != nil { memo.key = nil; memo.image = nil }
-            return nil
+    private func displayImage(for request: EditRenderRequest?) -> CGImage? {
+        guard let request else { return nil }
+        if request.key.quarterTurns == 0, request.key.cpuTilt == 0, request.key.crop == nil {
+            return request.source
         }
-        let cropMode = app.cropMode
-        let cpuTilt = cropMode ? 0 : app.currentTilt
-        var crop: CropRect?
-        if !cropMode, app.showCroppedPreview, let c = app.currentCrop, !c.isFullFrame {
-            crop = c
-        }
-        let key = EditKey(image: ObjectIdentifier(current),
-                          quarterTurns: app.currentQuarterTurns,
-                          cpuTilt: cpuTilt,
-                          crop: crop,
-                          cropMode: cropMode,
-                          showCroppedPreview: app.showCroppedPreview)
-        if memo.key == key, let cached = memo.image { return cached }
-
-        var img = current
-        if app.currentQuarterTurns != 0 {
-            img = ImagePipeline.rotateQuarter(img, turns: app.currentQuarterTurns)
-        }
-        if cpuTilt != 0 {
-            img = ImagePipeline.rotateToFill(img, degrees: cpuTilt)
-        }
-        if let crop {
-            img = ImagePipeline.crop(img, to: crop) ?? img
-        }
-        memo.key = key
-        memo.image = img
-        return img
+        guard renderer.ready?.key == request.key else { return nil }
+        return renderer.ready?.image
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Evaluate the pipeline exactly once per body; both the canvas
-            // and the action-bar visibility below reuse this.
-            let cg = memoizedDisplayImage()
+            // A mismatched old result is hidden synchronously, before the
+            // keyed task submits the latest request.
+            let request = renderRequest
+            let cg = displayImage(for: request)
 
             SectionHeader(text: "Canvas", number: 2,
                           focused: app.focusedPane == .image,
@@ -143,6 +100,8 @@ struct ImagePane: View {
                                 }
                         )
                     }
+                } else if request != nil {
+                    ProgressView("Rendering edits…").controlSize(.small)
                 } else if loader.isLoading {
                     // Instant placeholder: the filmstrip's 256 px thumb while
                     // the full decode runs — perceived miss latency ≈ 0.
@@ -192,7 +151,19 @@ struct ImagePane: View {
             .animation(Motion.fast, value: loader.isLoading)
         }
         .background(Surface.chrome)
+        .task(id: renderRequest?.key) {
+            guard let request = renderRequest else {
+                renderer.reset()
+                return
+            }
+            guard request.key.quarterTurns != 0 || request.key.cpuTilt != 0 || request.key.crop != nil else {
+                renderer.reset()
+                return
+            }
+            renderer.submit(request)
+        }
         .animation(Motion.normal, value: app.cropMode)
+        .onDisappear { renderer.reset() }
         .onChange(of: tiltFocused) { _, focused in app.tiltFocused = focused }
         .onChange(of: app.cropMode) { _, on in
             if !on {

@@ -1,0 +1,106 @@
+import SwiftUI
+import PhotoCullCore
+
+struct EditRenderKey: Equatable {
+    let source: ObjectIdentifier
+    let url: URL?
+    let quarterTurns: Int
+    let cpuTilt: Double
+    let crop: CropRect?
+
+    init(source: CGImage, url: URL?, quarterTurns: Int, cpuTilt: Double, crop: CropRect?) {
+        self.source = ObjectIdentifier(source)
+        self.url = url
+        self.quarterTurns = ((quarterTurns % 4) + 4) % 4
+        self.cpuTilt = cpuTilt == 0 ? 0 : cpuTilt
+        self.crop = crop.flatMap { $0.isFullFrame ? nil : $0 }
+    }
+}
+
+struct EditRenderRequest {
+    let key: EditRenderKey
+    let source: CGImage
+}
+
+/// One running exact-pipeline render and one replaceable latest request.
+@MainActor
+final class EditRenderer: ObservableObject {
+    @Published private(set) var ready: (key: EditRenderKey, image: CGImage)?
+
+    private let transform: (EditRenderRequest, @escaping () async -> Bool) async -> CGImage?
+    private var desiredKey: EditRenderKey?
+    private var running = false
+    private var pending: EditRenderRequest?
+    var isRendering: Bool { running }
+    private var serial = 0
+
+    init(transform: @escaping (EditRenderRequest, @escaping () async -> Bool) async -> CGImage? = EditRenderer.render) {
+        self.transform = transform
+    }
+
+    func submit(_ request: EditRenderRequest) {
+        if desiredKey == request.key {
+            if ready?.key == request.key || running && pending?.key != request.key { return }
+            if pending?.key == request.key { return }
+        }
+        serial += 1
+        desiredKey = request.key
+        if running {
+            pending = request
+        } else {
+            start(request, serial: serial)
+        }
+    }
+
+    func reset() {
+        serial += 1
+        desiredKey = nil
+        pending = nil
+        ready = nil
+    }
+
+    private func isCurrent(_ key: EditRenderKey, serial requestSerial: Int) -> Bool {
+        desiredKey == key && serial == requestSerial
+    }
+
+    private func start(_ request: EditRenderRequest, serial requestSerial: Int) {
+        running = true
+        let transform = self.transform
+        let renderer = self
+        Task.detached(priority: .userInitiated) {
+            let output = await transform(request) {
+                await MainActor.run { renderer.isCurrent(request.key, serial: requestSerial) }
+            }
+            await MainActor.run { renderer.finish(output, for: request, serial: requestSerial) }
+        }
+    }
+
+    private func finish(_ output: CGImage?, for request: EditRenderRequest, serial requestSerial: Int) {
+        if isCurrent(request.key, serial: requestSerial), let output {
+            ready = (request.key, output)
+        }
+        running = false
+        if let next = pending {
+            pending = nil
+            let nextSerial = serial
+            start(next, serial: nextSerial)
+        }
+    }
+
+    private static func render(_ request: EditRenderRequest, isCurrent: @escaping () async -> Bool) async -> CGImage? {
+        guard await isCurrent() else { return nil }
+        var image = request.source
+        if request.key.quarterTurns != 0 {
+            image = ImagePipeline.rotateQuarter(image, turns: request.key.quarterTurns)
+        }
+        guard await isCurrent() else { return nil }
+        if request.key.cpuTilt != 0 {
+            image = ImagePipeline.rotateToFill(image, degrees: request.key.cpuTilt)
+        }
+        guard await isCurrent() else { return nil }
+        if let crop = request.key.crop {
+            image = ImagePipeline.crop(image, to: crop) ?? image
+        }
+        return image
+    }
+}
