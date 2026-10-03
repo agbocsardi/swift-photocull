@@ -9,7 +9,7 @@ Parent specifies fixes; openai-codex/gpt-6-luna, high reasoning, implements boun
 - [x] Trace current loading, rendering, navigation/persistence and Finalize code; separate file ownership.
 - [x] Record runtime/input/output/test permissions in AGENTS.md and exact assignments.
 - [x] Launch all five independent implementers in committed-base Herdr worktrees, no focus change; startup model argv verified and prompts submitted.
-- [x] Review loading patch: correct-photo identity, shared full-key decode, bounded native work, embedded-only stage; fresh native 20-check parent run passed745ecfe.
+- [x] Review loading patch: correct-photo identity, shared full-key decode, bounded native work, embedded-only stage; fresh native 20-check parent run passed745ecfe; merged f9c7792.
 - [x] Review navigation patch: outgoing persistence, same-index session scroll, redundant boundary work; no added debounce; merged a05a917 after fresh 22-check verification.
 - [ ] Finish render review: corrected isolation/fidelity independently verified; final ready-result reuse/backtrack correction pending before merge.
 - [x] Review Finalize patch: reserved pair-consistent names, one-time inventory, exclusive owned stages/all-exit cleanup; merged 6cdf6a6 after fresh 35+58 checks.

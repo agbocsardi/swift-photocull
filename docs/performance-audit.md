@@ -14,7 +14,35 @@ Reports and reproducibility artifacts:
 Dispatch/progress: `2026-10-03_codex-performance-audit_TODO.md`. Probe files in
 `/tmp` are temporary; preserve approved artifacts before relying on them later.
 
-### Proven defects and merge gates
+### Implementation status — first Luna wave
+
+Parent-specified fixes, implemented by `openai-codex/gpt-6-luna --thinking high`,
+are tracked in `2026-10-03_luna-performance-fixes_TODO.md`. After returning
+concrete review defects and rebuilding in fresh parent-owned output:
+
+- `da7dea8`: locked test collectors, fail-closed suite selector, verified cleanup;
+  101 focused checks (including 58 preservation), no production callback change.
+- `a05a917`: outgoing save/error abort, no-session loader/timer cleanup, real
+  session/URL/open-epoch scroll identity, one cache read per cell; 22 model checks.
+- `6cdf6a6`: one-time destination inventory/in-run reservations, common archive
+  pair suffix, exclusive private stage mkdir and all-exit owned cleanup;
+  35 planning + 58 preservation checks. External writers/operation ownership
+  and independently induced copy/promotion failure remain unresolved.
+- `f9c7792`: demand/prefetch full-key sharing, cold-image clearing, embedded-only
+  stage, two native full jobs/four thumb jobs, invalidation guards and terminal
+  sharp failure; 20 actual SwiftUI/AppKit model checks. Queued thumbnail URLs
+  intentionally stay O(requested cells): dropping at 32 broke one-shot mounted
+  requests. Large-filmstrip eviction/virtualization is still a follow-up.
+- Renderer isolation/pixels independently verified (158 checks plus a failing
+  actor-isolation negative control); final ready-result reuse correction pending.
+  Not yet merged; combined loader+renderer regression/release build still due.
+
+**No app bundle replaced, GUI/real-library/Trash test or end-to-end timing run.**
+Native scroll/placeholder presentation needs live acceptance. Continue avoiding
+Finalize until remaining safety gates are handled. Temporary `AGENTS.md` will be
+removed at the end of the reviewed implementation wave as the user requested.
+
+### Original review findings (baseline gates; status above)
 
 1. **Original preservation is urgent.** Finalize recursively deletes its inbox
    session directory despite files the scan omitted: alternate JPEG/RAW
