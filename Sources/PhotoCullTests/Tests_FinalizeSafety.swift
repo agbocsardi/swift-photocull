@@ -4,8 +4,13 @@ import PhotoCullCore
 /// Synthetic originals only: no fixture reads, image decoding, dumps or rejects.
 func suiteFinalizeSafety() throws {
     let fm = FileManager.default
-    let root = URL(fileURLWithPath: "/tmp/finalize-safety-impl")
-        .appendingPathComponent("regression-\(UUID().uuidString)")
+    let output = ProcessInfo.processInfo.environment["PC_FINALIZE_SAFETY_OUT"]
+        ?? "/tmp/finalize-safety-impl"
+    guard output.hasPrefix("/"), output != "/", output != NSHomeDirectory() else {
+        fatalError("PC_FINALIZE_SAFETY_OUT must be a dedicated absolute root")
+    }
+    let root = URL(fileURLWithPath: output, isDirectory: true)
+        .appendingPathComponent("synthetic/regression-\(UUID().uuidString)")
     try fm.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? fm.removeItem(at: root) } // Only this suite's synthetic files.
     let cfg = PCConfig(
@@ -131,7 +136,7 @@ func suiteFinalizeSafety() throws {
     unchanged(sidecarPath.appendingPathComponent("original.JPG"), nestedSidecarBytes,
               "sidecar-directory replacement cannot be recursively deleted")
 
-    // Ordinary processing still removes the now-empty folder and sidecar.
+    // Ordinary success retains decisions, even when they are the only remaining entry.
     let complete = try folder("2025-04-01")
     let completeJPG = try write(complete, "A.JPG", 71)
     let completeRAW = try write(complete, "A.RAF", 72)
@@ -143,10 +148,28 @@ func suiteFinalizeSafety() throws {
     unchanged(archive(complete, "A.JPG"), completeJPG, "normal JPG bytes unchanged")
     unchanged(archive(complete, "A.RAF"), completeRAW, "normal RAW bytes unchanged")
     unchanged(archive(complete, "ORPHAN.RW2"), orphan, "orphan RAW bytes unchanged")
-    check(!fm.fileExists(atPath: complete.path), "all-processed folder removed")
-    check(!fm.fileExists(atPath: complete.appendingPathComponent(Session.fileName).path),
-          "all-processed sidecar removed")
+    check(fm.fileExists(atPath: complete.path), "sidecar-only folder retained")
+    unchanged(complete.appendingPathComponent(Session.fileName), sidecar,
+              "ordinary success retains sidecar byte-for-byte")
+    check(result.retainedFolders.contains(complete.path), "retained folder reported")
     check(!fm.fileExists(atPath: cfg.paths.dump), "safety suite never creates dump root")
+
+    let corrupt = try folder("2025-04-02")
+    let corruptSidecar = corrupt.appendingPathComponent(Session.fileName)
+    let corruptBytes = Data("{".utf8)
+    try corruptBytes.write(to: corruptSidecar)
+    let untouched = try write(corrupt, "A.JPG", 81)
+    do {
+        _ = try finalize(corrupt)
+        check(false, "corrupt sidecar rejected")
+    } catch { check(true, "corrupt sidecar rejected before effects") }
+    unchanged(corruptSidecar, corruptBytes, "corrupt sidecar preserved")
+    unchanged(corrupt.appendingPathComponent("A.JPG"), untouched, "corrupt sidecar original untouched")
+
+    do {
+        _ = try Finalize.summary(cfg: cfg, date: "../escape")
+        check(false, "traversal date rejected")
+    } catch { check(true, "traversal date rejected") }
 
     let empty = root.appendingPathComponent("no-sidecar")
     try fm.createDirectory(at: empty, withIntermediateDirectories: false)
