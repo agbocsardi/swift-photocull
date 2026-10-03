@@ -35,10 +35,20 @@ private func makeJPEG(_ url: URL, color: (UInt8, UInt8, UInt8)) throws {
 /// Synthetic-only Finalize regressions: never reject, Trash, or read user data.
 func suiteFinalizePlanningChecks() throws {
     let fm = FileManager.default
-    let root = URL(fileURLWithPath: "/tmp/photocull-luna-wave-2026-10-03/finalize")
-        .appendingPathComponent("test-\(UUID().uuidString)", isDirectory: true)
+    guard let outPath = ProcessInfo.processInfo.environment["PC_FINALIZE_TEST_OUT"] else {
+        fatalError("PC_FINALIZE_TEST_OUT must name the dedicated output root")
+    }
+    let outRoot = URL(fileURLWithPath: outPath).standardizedFileURL
+    let confinementPrefix = outRoot.path.hasSuffix("/") ? outRoot.path : outRoot.path + "/"
+    let root = outRoot.appendingPathComponent("synthetic/test-\(UUID().uuidString)", isDirectory: true)
+        .standardizedFileURL
+    guard root.path.hasPrefix(confinementPrefix) else { fatalError("synthetic root escaped OUT") }
     try fm.createDirectory(at: root, withIntermediateDirectories: true)
-    defer { try? fm.removeItem(at: root) }
+    defer {
+        if root.standardizedFileURL.path.hasPrefix(confinementPrefix) {
+            try? fm.removeItem(at: root)
+        }
+    }
     var dateIndex = 0
     func setup() throws -> (URL, URL, URL, PCConfig) {
         dateIndex += 1
@@ -93,14 +103,16 @@ func suiteFinalizePlanningChecks() throws {
     // Orphan reservations account for already-planned pair destinations.
     do {
         let (inbox, archive, _, cfg) = try setup()
-        let jpg = Data([21]), raw = Data([22]), orphan = Data([23])
+        let jpg = Data([21]), raw = Data([22]), orphan = Data([23]), outsider = Data([24])
         try bytes(inbox.appendingPathComponent("A.JPG"), jpg)
         try bytes(inbox.appendingPathComponent("A.RAF"), raw)
         try bytes(inbox.appendingPathComponent("A_2.RAF"), orphan)
+        try bytes(archive.appendingPathComponent("A.JPG"), outsider)
         _ = try run(cfg, date: inbox.lastPathComponent)
-        try assertBytes(archive.appendingPathComponent("A.JPG"), jpg, "pair JPG first slot")
-        try assertBytes(archive.appendingPathComponent("A.RAF"), raw, "pair RAW first slot")
-        try assertBytes(archive.appendingPathComponent("A_2.RAF"), orphan, "orphan planned without alias")
+        try assertBytes(archive.appendingPathComponent("A.JPG"), outsider, "existing pair JPG marker preserved")
+        try assertBytes(archive.appendingPathComponent("A_2.JPG"), jpg, "pair JPG receives common suffix")
+        try assertBytes(archive.appendingPathComponent("A_2.RAF"), raw, "pair RAW reserves orphan's original name")
+        try assertBytes(archive.appendingPathComponent("A_2_2.RAF"), orphan, "orphan avoids planned pair RAW")
     }
 
     // Dump paths are reserved independently; unrelated legacy .tmp is untouched.

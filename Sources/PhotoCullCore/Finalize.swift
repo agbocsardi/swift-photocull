@@ -115,6 +115,12 @@ public enum Finalize {
         var plans: [Plan] = []
         var jobs: [ExportJob] = []
         var reservations = Set<String>()
+        var inventoriedFolders = Set<String>()
+        for dir in dump ? [archiveFolder, dumpFolder] : [archiveFolder] {
+            if inventoriedFolders.insert(dir.standardizedFileURL.path).inserted {
+                reservations.formUnion(try destinationReservations(in: dir))
+            }
+        }
         for pair in pairs {
             var kind = Plan.Kind.dumpClone
             var dumpDst: URL?
@@ -164,23 +170,24 @@ public enum Finalize {
 
         // Create an invocation-owned staging area only when edits need it.
         var stageDirectory: URL?
-        if !jobs.isEmpty {
-            var candidate: URL
-            repeat {
-                candidate = dumpFolder.appendingPathComponent(".photocull-stage-\(UUID().uuidString)",
-                                                               isDirectory: true)
-            } while fm.fileExists(atPath: candidate.path)
-            try fm.createDirectory(at: candidate, withIntermediateDirectories: false)
-            stageDirectory = candidate
-            for i in jobs.indices {
-                jobs[i].stage = candidate.appendingPathComponent(String(i))
-            }
-        }
         defer {
             for job in jobs { if let stage = job.stage { unlinkOwnedFile(stage) } }
             if let stageDirectory { _ = removeEmptyDirectory(stageDirectory) }
         }
-
+        if !jobs.isEmpty {
+            var candidate: URL
+            while true {
+                candidate = dumpFolder.appendingPathComponent(".photocull-stage-\(UUID().uuidString)",
+                                                               isDirectory: true)
+                if try createOwnedDirectory(candidate) {
+                    stageDirectory = candidate
+                    break
+                }
+            }
+            for i in jobs.indices {
+                jobs[i].stage = candidate.appendingPathComponent(String(i))
+            }
+        }
         // PHASE 2
         let outcomes = exportAllParallel(jobs: jobs)
 
@@ -427,12 +434,29 @@ public enum Finalize {
             url.lastPathComponent.uppercased()
     }
 
+    /// Inventory each output directory once; directory listings include dangling links.
+    private static func destinationReservations(in dir: URL) throws -> Set<String> {
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        return Set(names.map { reservationKey(for: dir.appendingPathComponent($0)) })
+    }
+
     private static func destinationExists(_ url: URL) -> Bool {
-        let fm = FileManager.default
-        if fm.fileExists(atPath: url.path) { return true }
-        let wanted = url.lastPathComponent.uppercased()
-        return (try? fm.contentsOfDirectory(atPath: url.deletingLastPathComponent().path))?
-            .contains(where: { $0.uppercased() == wanted }) ?? false
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// mkdir is an exclusive ownership claim; only a UUID collision is retried.
+    private static func createOwnedDirectory(_ url: URL) throws -> Bool {
+        let (result, code) = url.withUnsafeFileSystemRepresentation { path -> (Int32, Int32) in
+            guard let path else { return (-1, EINVAL) }
+            let result = Darwin.mkdir(path, mode_t(0o700))
+            return (result, result == 0 ? 0 : errno)
+        }
+        guard result == 0 else {
+            if code == EEXIST { return false }
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(code),
+                          userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return true
     }
 
     private static func reserveDestination(for src: URL, in dir: URL,
