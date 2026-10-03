@@ -18,8 +18,13 @@ Dispatch/progress: `2026-10-03_codex-performance-audit_TODO.md`. Probe files in
 
 1. **Original preservation is urgent.** Finalize recursively deletes its inbox
    session directory despite files the scan omitted: alternate JPEG/RAW
-   extensions, dotfiles, unrelated entries and subdirectories. An isolated
-   empty-only-removal patch is in review preparation; it is not yet merged.
+   extensions, dotfiles, unrelated entries and subdirectories. The narrow
+   empty-only-removal fix `9fa65c0` is merged as `d039718`: known residue keeps
+   its sidecar; kernel rmdir cannot recursively delete late arrivals. Parent's
+   fresh release build passed 58/58 synthetic no-Trash checks, and the worker's
+   debug binary passed the same focused rerun. The app bundle has not been
+   rebuilt/replaced in this review. Late arrivals may still lose the sidecar
+   between listing and unlink; external path replacement is not addressed.
    No loss in the user's library is established. **Avoid Finalize for now.**
    Destination probes also fail to reserve names, can split pair suffixes,
    and can plan duplicates. All-exit staging cleanup and operation ownership
@@ -100,8 +105,10 @@ Dispatch/progress: `2026-10-03_codex-performance-audit_TODO.md`. Probe files in
 
 ### Ranked implementation scope (proposal, not new approval)
 
-1. Review/merge the narrow preservation patch; follow with naming, staging and
+1. Narrow preservation patch reviewed/merged; follow with naming, staging and
    destructive-operation ownership safety fixes before clearing Finalize.
+   Rebuild/verify the release bundle before any user feel test; a source merge
+   does not replace a running/installed executable.
 2. Correct baseline request identity/outgoing persistence and pending debounce/
    scroll/admission defects, with a small controllable MainActor regression
    runner. Prefer explicit embedded-only soft fallback, not generated+sharp

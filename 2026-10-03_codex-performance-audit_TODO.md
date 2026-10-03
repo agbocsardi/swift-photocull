@@ -13,7 +13,8 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - [x] Integrate images report (including step-snappy review); probe source/logs inspected.
 - [x] Integrate I/O/concurrency report; urgent preservation patch dispatched separately.
 - [x] Integrate evidence/test-coverage report; source/capability logs and raw measurement summary inspected.
-- [ ] Evaluate urgent finalize-safety-impl patch: empty-only cleanup, residue preservation, dedicated no-Trash tests; integrate/rebuild only after review.
+- [x] Evaluate/integrate urgent finalize-safety-impl patch: empty-only cleanup, residue preservation, parent fresh-release dedicated no-Trash tests.
+- [ ] Rebuild/verify release app bundle with approved fixes before any user feel test; current merge does not update installed/running app.
 - [ ] Resolve remaining destructive-operation safety findings (unique pair-consistent names/stages, all-exit cleanup, operation ownership) before treating Finalize as cleared for use.
 - [ ] Resolve step-snappy review findings before merging/shipping that branch.
 - [x] Consolidate findings into docs/performance-audit.md; distinguish measured/source-proven/hypothesis.
@@ -87,3 +88,12 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - Updated docs/performance-audit.md with authoritative current section, five-review provenance, source-proven correctness gates, measured-kernel caveats, test/diagnostic repairs and ranked proposal. Historical rationale retained but explicitly superseded; removed blanket current macro-incompatibility claim.
 - Proposed next scope: original-preservation safety first; request identity/outgoing persistence and debounce/scroll/stale-admission app regressions next; hermetic collector/diagnostic fixes and native metering; bounded existing-pipeline settled edits/thumbnail work only with focused acceptance. No global pixel-cap change, Observation rewrite, scheduler framework or fidelity-changing fused transform approved.
 - Remaining child: finalize-safety-impl, wM:p1; await completion, review diff and dedicated no-Trash regressions. No production code merged or release rebuild performed; step-snappy stays unmerged. Reviewer tabs/worktrees retained pending user cleanup approval.
+
+### 2026-10-03 — original-preservation hotfix reviewed and merged
+
+- finalize-safety-impl (wM:p1) completed commit9fa65c020ac3da6db602d85faed8bb867fddceee on fix/finalize-preserve-originals. Parent read report/full changed production source/full runner/diff and all safety cases; checked runMulti funnels through run and only three permitted files changed. Worker checkout clean.
+- Accepted narrow semantics: immediate residual names (including hidden/unrecognized/subdir/symlinks) retain sidecar; unlink cannot recurse into sidecar-directory replacement; Darwin.rmdir is the kernel empty-only guard. No recursive fallback. Normal pair/orphan/empty-folder cleanup retained. Late arrivals can retain originals but lose sidecar after residual listing; path/ownership races explicitly remain.
+- Fresh parent release build of PhotoCullTests used worker checkout and dedicated /tmp/photocull-parent-finalize-review-9fa65c0/{build,cache,config,security,module-cache,clang-module-cache}; swift build --package-path /Users/agbocsardi/.herdr/worktrees/swift-photocull/fix-finalize-preserve-originals --scratch-path <review>/build --cache-path <review>/cache --config-path <review>/config --security-path <review>/security -c release --product PhotoCullTests, with worker-isolated module cache env overrides. Build succeeded (existing CLT linker path warnings only).
+- Parent executed fresh release binary --finalize-safety-only:58/58; separately reran worker debug binary same filter:58/58. Logs build.log/tests-release.log/tests-worker-debug.log in parent review directory. No fixture/skip/reject/Trash/GUI/real-config execution; no unfiltered suite or shared .build writes. git diff --check clean.
+- Merged as d039718 with WHY message. Source safety improvement only: release app bundle not rebuilt/replaced in this review. Continue avoiding Finalize until broader naming/staging/ownership safety findings are handled; do not claim preservation of concurrent sidecar writes or all filesystem identities.
+- All dispatched children now reported. No outstanding child reports; step-snappy remains unmerged. Worktrees/tabs retained pending user approval; next implementation scope/model awaits direction.
