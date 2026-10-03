@@ -35,12 +35,11 @@ func suiteIngest() throws {
         files: FilesConfig(rawExtensions: ["RAF", "RW2"], jpgExtensions: ["JPG", "JPEG"]))
 
     // ── First ingest: 3 copies into a date folder ────────────────────────
-    final class EventBox: @unchecked Sendable {
-        var events: [IngestProgress] = []
+    let box = LockedBox<[IngestProgress]>([])
+    let res = try Ingest.run(cfg: cfg, source: card) { progress in
+        box.update { $0.append(progress) }
     }
-    let box = EventBox()
-    let res = try Ingest.run(cfg: cfg, source: card) { box.events.append($0) }
-    let events = box.events
+    let events = box.snapshot()
     checkEqual(res.copied, 3, "first run copies 3 matching files")
     checkEqual(res.skipped, 0, "first run skips nothing")
     checkEqual(res.folders, ["2024-05-03"], "folders = mod-date folders, sorted")
