@@ -9,7 +9,7 @@ mkdir -p "$OUT"/{build,cache,config,security,module-cache,clang-module-cache,run
 CLANG_MODULE_CACHE_PATH="$OUT/clang-module-cache" \
 SWIFTPM_MODULECACHE_OVERRIDE="$OUT/module-cache" \
 swift build --package-path "$ROOT" --scratch-path "$OUT/build" --cache-path "$OUT/cache" \
-  --config-path "$OUT/config" --security-path "$OUT/security" -c release --target PhotoCullCore
+  --config-path "$OUT/config" --security-path "$OUT/security" -c release
 
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 PRODUCTS="$OUT/build/out/Products/Release"

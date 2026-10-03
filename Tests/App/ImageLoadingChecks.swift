@@ -28,7 +28,10 @@ private final class Probe: @unchecked Sendable {
 private final class Gate: @unchecked Sendable {
     let entered = DispatchSemaphore(value: 0)
     let release = DispatchSemaphore(value: 0)
-    func wait() -> Bool { entered.signal(); return release.wait(timeout: .now() + 3) == .success }
+    func wait() {
+        entered.signal()
+        precondition(release.wait(timeout: .now() + 3) == .success, "barrier timed out")
+    }
 }
 
 @MainActor
@@ -74,7 +77,7 @@ private struct ImageLoadingChecks {
             let ga = Gate(), gb = Gate(), a = image(1), b = image(0)
             let loader = ImageLoader(decode: { u, _ in
                 let gate = u.lastPathComponent.hasPrefix("A") ? ga : gb
-                _ = gate.wait()
+                gate.wait()
                 return u.lastPathComponent.hasPrefix("A") ? a : b
             }, embedded: { _, _ in nil })
             loader.load(url: url("A-reverse"), maxPixel: 200)
@@ -90,7 +93,7 @@ private struct ImageLoadingChecks {
         do {
             let gate = Gate(), probe = Probe(), a = image(1), b = image(0)
             let loader = ImageLoader(decode: { u, _ in
-                probe.start(u.lastPathComponent); _ = gate.wait(); probe.end()
+                probe.start(u.lastPathComponent); gate.wait(); probe.end()
                 return u.lastPathComponent.hasPrefix("A") ? a : b
             }, embedded: { _, _ in nil })
             loader.load(url: url("A-back"), maxPixel: 250)
@@ -106,7 +109,7 @@ private struct ImageLoadingChecks {
         do {
             let gate = Gate(), probe = Probe(), marker = image(0.5)
             let loader = ImageLoader(decode: { u, _ in
-                probe.start(u.lastPathComponent); _ = gate.wait(); probe.end(); return marker
+                probe.start(u.lastPathComponent); gate.wait(); probe.end(); return marker
             }, embedded: { _, _ in nil })
             loader.prefetch(urls: [url("joined")], maxPixel: 300)
             await waitForEntry(gate, "prefetch entered")
@@ -125,7 +128,7 @@ private struct ImageLoadingChecks {
             let loader = ImageLoader(decode: { u, _ in probe.start(u.lastPathComponent); probe.end(); return sharp },
                                      embedded: { u, _ in
                                          if u.lastPathComponent.hasPrefix("stale") {
-                                             _ = previewGate.wait(); return image(0.75)
+                                             previewGate.wait(); return image(0.75)
                                          }
                                          return nil
                                      })
@@ -141,7 +144,7 @@ private struct ImageLoadingChecks {
         do {
             let gate = Gate(), probe = Probe(), marker = image(0.4)
             let loader = ImageLoader(decode: { u, _ in
-                probe.start(u.lastPathComponent); _ = gate.wait(); probe.end(); return marker
+                probe.start(u.lastPathComponent); gate.wait(); probe.end(); return marker
             }, embedded: { _, _ in nil })
             loader.load(url: url("invalidated"), maxPixel: 500)
             await waitForEntry(gate, "decode before invalidate")
@@ -170,7 +173,7 @@ private struct ImageLoadingChecks {
             let gate = Gate(), probe = Probe(), marker = image(0.5)
             let names = (0..<6).map { "queued-\($0)" }
             let loader = ImageLoader(decode: { u, _ in
-                probe.start(u.lastPathComponent); _ = gate.wait(); probe.end(); return marker
+                probe.start(u.lastPathComponent); gate.wait(); probe.end(); return marker
             }, embedded: { _, _ in nil })
             loader.prefetch(urls: names.map(url), maxPixel: 700)
             await waitForEntry(gate, "two loader slots filled")
@@ -200,7 +203,7 @@ private struct ImageLoadingChecks {
             checks.expect(probe.maxActive <= 4, "thumbnail native concurrency is capped at four")
         }
         do {
-            let gate = Gate(), store = ThumbnailStore(decode: { _, _ in _ = gate.wait(); return image(0.3) })
+            let gate = Gate(), store = ThumbnailStore(decode: { _, _ in gate.wait(); return image(0.3) })
             _ = store.thumbnail(for: url("thumb-clear"))
             await waitForEntry(gate, "thumbnail before clear")
             store.clear(); gate.release.signal()
