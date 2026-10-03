@@ -10,7 +10,7 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - [x] Dispatch five independent read-only reviewers, no focus changes.
 - [x] Integrate navigation report (including step-snappy review).
 - [x] Integrate render report (including step-snappy review); source-verified blockers recorded below.
-- [ ] Integrate images report (including step-snappy review).
+- [x] Integrate images report (including step-snappy review); probe source/logs inspected.
 - [x] Integrate I/O/concurrency report; urgent preservation patch dispatched separately.
 - [ ] Integrate evidence/test-coverage report.
 - [ ] Evaluate urgent finalize-safety-impl patch: empty-only cleanup, residue preservation, dedicated no-Trash tests; integrate/rebuild only after review.
@@ -67,3 +67,14 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - codex-perf-navigation (wB:p9): report read; control-flow probe outputs inspected (mock decoder, NOT ImageIO timing). Baseline retains wrong-photo pixels, duplicates prefetch+foreground, ignores useful superseded results; pending still starts full decode after rejecting stale soft publication. Source verifies outgoing persistence task resolves the current session and open() does not flush before replacement—normal switching can lose remembered index.
 - Navigation/render corroborate pending debounce backtrack, filtered/stale neighbor admission and revision/index scroll defects. Other pending target-policy races include editing/closing/filtering/modals before timer fires. No-op boundary navigation repeats metadata work; request coordination and metadata reuse remain opportunities. Uppercase skip-decided key dispatch issue noted for separate correctness follow-up.
 - No app-source changes merged. Remaining independent reports: images, evidence; urgent safety patch also awaited.
+
+### 2026-10-03 — images report integrated
+
+- codex-perf-images (wB:pB): full report read; parent inspected explicit-false helper source, thumbnail results, decode grid, edit results and extra-results. Reports corroborate wrong-photo retention, stale sharp-stage admission, duplicate request work and core-count native export memory risk.
+- Native embedded-only helper is the smallest viable preview improvement: explicitly false BOTH CreateThumbnailFromImageAlways and CreateThumbnailFromImageIfAbsent, preserving transform/maxPixel/cache-immediately; missing embedded result -> full decode directly. Corrected large-file probe warm medians 0.17–0.20 ms nil, first sample up to 16.8 ms (NOT a hard deadline). Earlier omitted-flags probe did synthesize full-image fallback and is not valid embedded-only evidence. Public test fixture has no embedded thumb.
+- Sequential fallback preview+full regresses no-embedded requests: synthetic 6240 direct3072 110.7 ms vs sequential276.5 ms; no global UI speed promise. Preserve preview/full/error identity/quality semantics and share selected cached thumb where practical.
+- Fixed3072 claim corrected: synthetic6000 half3000 70.6 ms vs3072 180.3 ms; 6240 half3120 77.4 ms vs3072 110.7 ms; orientation alters cost. Keep cap as a memory policy until fit/backing-scale/detail demand is measured; share any future target selection with prefetch.
+- Fused native quarter+tilt+crop prototype median11.6 ms vs sequential72.8 ms on one synthetic crop, but mean channel difference0.25/255 and max18/255. NOT approved as a replacement; bounded off-main existing pipeline is the lower-risk first change.
+- Cache stride/backing caveats confirmed in probe: use bytesPerRow*height as better bookkeeping, not RSS; cap16 stays authoritative and lone oversized-entry exception documented. Invalidation weaknesses latent (no production callers), not mislabeled active defects.
+- Worker disclosed temporary corpus ceiling overrun (~157MB) then corrected/removes duplicate; present corpus under128MB, no user-data or source writes.
+- Await evidence report and finalize-safety implementation. All pending app changes remain unmerged.
