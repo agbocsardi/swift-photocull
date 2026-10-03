@@ -12,11 +12,11 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - [x] Integrate render report (including step-snappy review); source-verified blockers recorded below.
 - [x] Integrate images report (including step-snappy review); probe source/logs inspected.
 - [x] Integrate I/O/concurrency report; urgent preservation patch dispatched separately.
-- [ ] Integrate evidence/test-coverage report.
+- [x] Integrate evidence/test-coverage report; source/capability logs and raw measurement summary inspected.
 - [ ] Evaluate urgent finalize-safety-impl patch: empty-only cleanup, residue preservation, dedicated no-Trash tests; integrate/rebuild only after review.
 - [ ] Resolve remaining destructive-operation safety findings (unique pair-consistent names/stages, all-exit cleanup, operation ownership) before treating Finalize as cleared for use.
 - [ ] Resolve step-snappy review findings before merging/shipping that branch.
-- [ ] Consolidate findings into docs/performance-audit.md; distinguish measured/source-proven/hypothesis.
+- [x] Consolidate findings into docs/performance-audit.md; distinguish measured/source-proven/hypothesis.
 - [ ] Propose ranked implementation scope, then delegate any approved edits in isolated worktrees.
 - [ ] Clean up owned reviewer tabs after integration and user confirmation.
 
@@ -78,3 +78,12 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - Cache stride/backing caveats confirmed in probe: use bytesPerRow*height as better bookkeeping, not RSS; cap16 stays authoritative and lone oversized-entry exception documented. Invalidation weaknesses latent (no production callers), not mislabeled active defects.
 - Worker disclosed temporary corpus ceiling overrun (~157MB) then corrected/removes duplicate; present corpus under128MB, no user-data or source writes.
 - Await evidence report and finalize-safety implementation. All pending app changes remain unmerged.
+
+### 2026-10-03 — evidence report integrated; all five reviews consolidated
+
+- codex-perf-evidence (wB:pD): full report read. Parent checked three unlocked ingest callback collectors against production concurrent callback dispatch, HeadlessCheck FAILED/MISSING -> zero control flow, Core-only test-target dependency, raw pipeline-summary, Observation/signpost probe sources and compiler/capability logs. Did not rerun probes or launch the app.
+- Optimized bounded evidence probe independently corroborates input-dependent ImageIO cliffs and absent-embedded fallback expense (synthetic3840: half1920 mean32.5ms,3072 mean91.4ms; generated256 mean63.9ms). Six retained repeats after first discarded are not p95/p99 or app-frame data.
+- Evidence correction: no preserved controlled end-to-end timing; previous CHECK totals cannot validate app-layer pending changes. Cache concurrency loop is enabled (missing loader coverage != disabled tests). Observation compiles; only specific SwiftUI macro plugin failure verified. Native signposts available; XCTest/xctrace unavailable in selected CLT environment.
+- Updated docs/performance-audit.md with authoritative current section, five-review provenance, source-proven correctness gates, measured-kernel caveats, test/diagnostic repairs and ranked proposal. Historical rationale retained but explicitly superseded; removed blanket current macro-incompatibility claim.
+- Proposed next scope: original-preservation safety first; request identity/outgoing persistence and debounce/scroll/stale-admission app regressions next; hermetic collector/diagnostic fixes and native metering; bounded existing-pipeline settled edits/thumbnail work only with focused acceptance. No global pixel-cap change, Observation rewrite, scheduler framework or fidelity-changing fused transform approved.
+- Remaining child: finalize-safety-impl, wM:p1; await completion, review diff and dedicated no-Trash regressions. No production code merged or release rebuild performed; step-snappy stays unmerged. Reviewer tabs/worktrees retained pending user cleanup approval.

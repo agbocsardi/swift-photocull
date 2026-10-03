@@ -1,4 +1,124 @@
-# PhotoCull performance audit — 2026-10-02
+# PhotoCull performance audit
+
+## Current assessment — 2026-10-03 (Codex independent review)
+
+**This section supersedes the historical conclusions below.** Five independent
+`openai-codex/gpt-6.1-sol --thinking high` reviewers examined frozen baseline
+`222741b` and the separate, **unmerged** step-snappy candidate `e9c6b64`.
+No GUI, user-library tests, real Trash, or full suite ran in this audit. Parent
+read all five reports and spot-verified source and probe artifacts; inspected
+probe results are reviewer measurements, not independent parent reruns.
+
+Reports and reproducibility artifacts:
+`/tmp/photocull-codex-audit-222741b/{navigation,render,images,io,evidence}/report.md`.
+Dispatch/progress: `2026-10-03_codex-performance-audit_TODO.md`. Probe files in
+`/tmp` are temporary; preserve approved artifacts before relying on them later.
+
+### Proven defects and merge gates
+
+1. **Original preservation is urgent.** Finalize recursively deletes its inbox
+   session directory despite files the scan omitted: alternate JPEG/RAW
+   extensions, dotfiles, unrelated entries and subdirectories. An isolated
+   empty-only-removal patch is in review preparation; it is not yet merged.
+   No loss in the user's library is established. **Avoid Finalize for now.**
+   Destination probes also fail to reserve names, can split pair suffixes,
+   and can plan duplicates. All-exit staging cleanup and operation ownership
+   remain separate safety work; the narrow hotfix does not clear these.
+2. **Photo identity before speed.** A cold ImageLoader request retains the
+   previous image while the new selection's edits change. Fix request/image/
+   stage identity and assert reversed decode completions before shipping
+   two-stage previews. Demand and prefetch can also decode the same key twice.
+3. **Session persistence and pending navigation.** Flush the outgoing session's
+   pending last-index persistence before replacing it. Pending A→B→A leaves
+   B's debounce alive; same-active clicks also bypass cancellation. Define
+   pending-target behavior for focus/filter/edit/modal/close transitions.
+4. **Session-scroll identity is not edit revision.** Pending scroll observes
+   index alone and misses equal-index switches; edit revision falsely tags
+   ordinary photo navigation as a session change. Test identity plus index.
+5. **Bound/admit work correctly.** A rejected stale soft publication still
+   starts sharp decode; old neighbour planners can acquire a fresh generation
+   and filtered adjacency is ignored. Eager filmstrip thumbnail work is
+   unbounded; eviction can leave mounted cells without a new request. Keep
+   non-lazy layout until its known blank-cell/far-scroll constraints are tested.
+
+### Evidence corrections
+
+- **No preserved controlled end-to-end latency trace.** Prior 415 CHECK results
+  exercise Core, not AppState/ImageLoader/SwiftUI. Screenshots after seven
+  seconds and qualitative positive feedback are useful smoke/feel evidence,
+  not race coverage or measured input-to-correct-photo latency.
+- **3072 is a memory/detail policy, not a universal IDCT optimum.** Optimized
+  synthetic 6000-wide input: half-size 3000 ~70.6 ms versus 3072 ~180.3 ms;
+  6240-wide input: 3120 ~77.4 ms versus 3072 ~110.7 ms. Independent evidence
+  probe, 3840-wide input: 1920 ~32.5 ms versus 3072 ~91.4 ms. These warm
+  kernel observations depend on input/orientation/platform; no universal
+  navigation percentage follows. Cache still has a **16-entry cap**, not ~20.
+  Bitmap arithmetic and cache budget are not app RSS/GPU-memory limits.
+- **Embedded-only means both ImageIO create-from-image flags explicitly false.**
+  Production IfAbsent is a valid fallback for filmstrip thumbnails, but is
+  expensive as a mandatory first stage before sharp decode when previews are
+  absent. Explicit false/false returned nil at ~0.17–0.20 ms warm in the large
+  synthetic probe (first result up to 16.8 ms). Both independent audits found
+  the public fixture lacks an embedded preview. The old 49-file survey does
+  not establish all future corpora have previews or bound mount contention.
+- **Settled edit work is still synchronous on the UI path.** Optimized
+  3072×2048 quarter-turn+tilt+crop probes ~73 ms are kernel measurements, not
+  app frame timings. A fused single-context prototype ~12 ms changes pixels
+  (max channel difference 18/255); no fidelity-preserving replacement is
+  established. First consider bounded off-main use of the existing pipeline.
+- Exact SwiftUI body counts, zero-latency claims and prefetch/export/ingest
+  end-to-end multipliers were not substantiated by preserved UI traces.
+  Subscription removal/memoization are source-proven; static subscriber counts
+  cannot establish actual body executions. SSD/clone timings are not SD-card
+  byte-transfer throughput; reported SD ranges were extrapolations.
+
+### Test/diagnostic repairs and measurement plan
+
+- Three ingest test collectors mutate unchecked-Sendable arrays/values without
+  locks while callbacks run concurrently. Protect mutation and snapshot reads;
+  do not call the unsynchronized CHECK harness from worker callbacks.
+- Require explicit fixtures, suite filters, per-suite counts and skip reasons.
+  Isolate Trash-dependent tests; temp-root config does not isolate real Trash.
+  The cache concurrentPerform test **is enabled**; loader/app race coverage is
+  missing, not disabled. HeadlessCheck can print FAILED/MISSING and exit zero;
+  a PNG-written success does not validate requested-image identity.
+- Native OSLog/signposts and Observation compile on this toolchain. SwiftUI
+  State fails because SwiftUIMacros is missing; XCTest is unavailable and the
+  xctrace shim requires full Xcode. Do not migrate observation architecture
+  merely because its macro compiles; current StateObject workaround stays.
+- Approved next measurement work should use explicit, fail-closed synthetic
+  config; never overwrite real config or assume HOME/PC_FIXTURES isolates app
+  paths. Build separately in release with debug profiling information and
+  record source/executable identity. Add request-keyed monotonic spans for
+  input, debounce, planning, state commit, queue/decode, soft/sharp publication
+  and settled edits, plus thumbnail/prefetch hit/duplicate/stale-work counts.
+- Publication is **data ready, not first paint**. Correlate with compositor/
+  visible-marker evidence when available; otherwise state that limitation.
+  Measure 30–50 repeats, p50/p95/max and failures on identical cadence/corpus/
+  display; separate process/app-cache cold from filesystem-cold. Use native
+  log/sample/vmmap now; install no profiling framework or Xcode for this task.
+
+### Ranked implementation scope (proposal, not new approval)
+
+1. Review/merge the narrow preservation patch; follow with naming, staging and
+   destructive-operation ownership safety fixes before clearing Finalize.
+2. Correct baseline request identity/outgoing persistence and pending debounce/
+   scroll/admission defects, with a small controllable MainActor regression
+   runner. Prefer explicit embedded-only soft fallback, not generated+sharp
+   sequential decoding. Keep step-snappy unmerged until these gates pass.
+3. Repair collectors/diagnostics and add minimal native request-path metering.
+   Then evaluate bounded off-main settled edits and thumbnail/request work
+   using identical synthetic scenarios and user-approved live feel tests.
+4. Tune pixel targets/export width only with detail, memory and contention
+   evidence. No global Observation rewrite, scheduler framework, custom
+   clonefile wrapper, Metal/vImage rewrite or return to LazyHStack.
+
+---
+
+# Historical audit — 2026-10-02
+
+The following records the earlier rationale; numerical UI claims and blanket
+optimality statements are not current acceptance evidence (see corrections above).
 
 Consolidated from four parallel read-only reviews (zai/glm-5.3-flash sub-agents):
 `/tmp/perf-audit/{hotpath,pipeline,render,misc}.md`. Reports' line numbers verified against each other.
@@ -100,8 +220,10 @@ export-time-only win), `noneSkipLast` alpha info (percent-level), Metal/vImage (
 # Round 2 — 2026-10-02 (post wave 1+2 merge, commit 2c74263)
 
 Consolidated from three parallel read-only reviews (zai/glm-5.3): `/tmp/perf2/{interaction,io,remaining}.md`.
-All headline numbers re-verified by the parent (probe re-runs, real-inbox thumbcheck, 358/358 suite).
-One reviewer miscounted "356 checks" — parent run confirms 358.
+Earlier parent reported probe re-runs, real-inbox thumbcheck and 358/358 CHECKs.
+The original raw distributions/probe provenance are not preserved here; treat these
+as reported kernel/smoke observations, not independently reproducible UI speedups.
+One reviewer miscounted "356 checks" — parent reported 358.
 
 ## Measured facts that reshaped the plan
 
@@ -150,4 +272,5 @@ Wave split (disjoint file domains): **perf2-app** (A1–A7, `Sources/PhotoCullAp
 - QoS changes to .background/.utility for bulk ops — macOS I/O-throttles background QoS;
   .userInitiated is correct.
 - @Observable, Metal/vImage, drawingGroup, LazyHStack, Equatable cells — standing anti-recs;
-  @Observable additionally needs macros (toolchain can't).
+  Observation's macro compiles on the current toolchain; a migration still needs
+  demonstrated benefit. SwiftUI State's separate macro plugin is unavailable.
