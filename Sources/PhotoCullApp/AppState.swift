@@ -93,7 +93,7 @@ final class AppState: ObservableObject {
 
     // MARK: Config + library
 
-    @Published var cfg: PCConfig = PCConfig.load()
+    @Published var cfg: PCConfig
     @Published var sessions: [SessionRow] = []
 
     // MARK: Active session
@@ -103,6 +103,7 @@ final class AppState: ObservableObject {
     @Published var index: Int = 0
     /// Bumped whenever the (reference-typed) Session mutates, to force redraws.
     @Published var revision: Int = 0
+    @Published private(set) var sessionOpenEpoch = 0
     @Published var info = PhotoInfo()
     private var session: Session?
 
@@ -170,16 +171,20 @@ final class AppState: ObservableObject {
         NSApplication.shared.appearance = appearance.nsAppearance
     }
 
-    init() {
-        let saved = UserDefaults.standard.string(forKey: Self.appearanceKey) ?? "system"
-        appearance = AppAppearance(rawValue: saved) ?? .system
-        applyAppearance()
+    init(cfg: PCConfig? = nil, initializeAppearance: Bool = true,
+         openInitialSession: Bool = true) {
+        self.cfg = cfg ?? PCConfig.load()
+        if initializeAppearance {
+            let saved = UserDefaults.standard.string(forKey: Self.appearanceKey) ?? "system"
+            appearance = AppAppearance(rawValue: saved) ?? .system
+            applyAppearance()
+        }
 
         // No SD-card scan here: `detectSDCards` stats /Volumes/*/DCIM, and a
         // stale network mount can stall the first frame for seconds.
         // `beginIngest` detects (and defaults `ingestSource`) when needed.
         reloadLibrary()
-        if let first = sessions.first { open(date: first.date) }
+        if openInitialSession, let first = sessions.first { open(date: first.date) }
     }
 
     // MARK: - Derived
@@ -242,18 +247,27 @@ final class AppState: ObservableObject {
     func reloadLibrary() {
         sessions = Library.loadSessions(cfg: cfg)
         if let active = activeDate, !sessions.contains(where: { $0.date == active }) {
-            activeDate = nil
-            pairs = []
-            session = nil
+            clearActiveSession()
         }
         if cursorDate == nil || !sessions.contains(where: { $0.date == cursorDate }) {
             cursorDate = activeDate ?? sessions.first?.date
         }
     }
 
+    private func clearActiveSession() {
+        persistTask?.cancel()
+        persistTask = nil
+        activeDate = nil
+        pairs = []
+        session = nil
+        info = PhotoInfo()
+        imageLoader.load(url: nil, maxPixel: 0)
+    }
+
     // MARK: - Session loading
 
     func open(date: String) {
+        guard flushPersist() else { return }
         do {
             let folder = Library.inboxFolder(cfg: cfg, date: date)
             let loaded = try Session.load(folder: folder)
@@ -264,6 +278,7 @@ final class AppState: ObservableObject {
             cursorDate = date
             index = min(max(0, loaded.lastIndex), max(0, loadedPairs.count - 1))
             revision += 1
+            sessionOpenEpoch += 1
             cropMode = false
             canvas.resetZoom()
             loadCurrent()
@@ -300,33 +315,34 @@ final class AppState: ObservableObject {
         return longest > 0 ? min(longest, 3072) : 3072
     }
 
-    /// Sidecar write for the open session. Rare/immediate path — navigation
-    /// uses `schedulePersist` instead.
-    private func persist() {
-        guard let session, let date = activeDate else { return }
-        do { try session.save(folder: Library.inboxFolder(cfg: cfg, date: date)) }
-        catch { fail("Could not save session: \(error.localizedDescription)") }
-    }
-
     /// Trailing-edge debounce for the per-keystroke navigation write: j/k no
     /// longer hits disk once per key, the sidecar lands ~500 ms after the
     /// last one (or immediately via `flushPersist`).
     private func schedulePersist() {
         persistTask?.cancel()
+        guard let target = session, let date = activeDate else { return }
         persistTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 500_000_000)
             guard let self, !Task.isCancelled else { return }
             self.persistTask = nil
-            self.persist()
+            self.persist(target, date)
         }
     }
 
-    /// Write a pending debounced persist now (close, finalize, ingest).
-    private func flushPersist() {
-        guard persistTask != nil else { return }
+    /// Save the active session at every session/destructive-operation boundary.
+    /// A failure leaves it active and prevents the caller from proceeding.
+    @discardableResult
+    private func flushPersist() -> Bool {
         persistTask?.cancel()
         persistTask = nil
-        persist()
+        guard let session, let date = activeDate else { return true }
+        do {
+            try session.save(folder: Library.inboxFolder(cfg: cfg, date: date))
+            return true
+        } catch {
+            fail("Could not save session: \(error.localizedDescription)")
+            return false
+        }
     }
 
     // MARK: - Undo / redo
@@ -405,7 +421,9 @@ final class AppState: ObservableObject {
             toastMessage(dir == .next ? "No later undecided photo" : "No earlier undecided photo")
             return
         }
-        setIndex(index + (dir == .next ? 1 : -1))
+        let target = min(max(index + (dir == .next ? 1 : -1), 0), pairs.count - 1)
+        guard target != index else { return }
+        setIndex(target)
     }
 
     /// Toggle-to-clear, otherwise set and auto-advance — matches the webapp.
@@ -642,6 +660,7 @@ final class AppState: ObservableObject {
     /// folder + parses the sidecar — keep it off the main thread so the sheet
     /// opens without a stall.
     func beginFinalize(date: String) {
+        guard flushPersist() else { return }
         let cfg = self.cfg
         Task.detached(priority: .userInitiated) {
             do {
@@ -659,6 +678,7 @@ final class AppState: ObservableObject {
     }
 
     func beginGlobalFinalize() {
+        guard flushPersist() else { return }
         let dates = selectedDates.isEmpty ? visibleSessions.map(\.date) : Array(selectedDates)
         guard !dates.isEmpty else { return }
         let cfg = self.cfg
@@ -678,7 +698,7 @@ final class AppState: ObservableObject {
     }
 
     func confirmFinalize() {
-        guard !finalizeRunning else { return }
+        guard !finalizeRunning, flushPersist() else { return }
         let dates: [String]
         switch modal {
         case .finalize(let date): dates = [date]
@@ -686,10 +706,9 @@ final class AppState: ObservableObject {
             dates = finalizeStats.map(\.date)
         default: return
         }
-        // Finalize reads the sidecar from disk — land any pending navigation
-        // write first, then hand the whole run to a background task so the UI
+        // Finalize reads the sidecar from disk — flush it before handing the
+        // whole run to a background task so the UI
         // stays responsive for the (long) move/trash/dump phase.
-        flushPersist()
         modal = nil
         finalizeRunning = true
         toastMessage("Finalizing…")
@@ -708,7 +727,7 @@ final class AppState: ObservableObject {
                     self.finalizeRunning = false
                     self.selectedDates.removeAll()
                     if let d = self.activeDate, dates.contains(d) {
-                        self.activeDate = nil; self.pairs = []; self.session = nil
+                        self.clearActiveSession()
                     }
                     self.reloadLibrary()
                     if let first = self.sessions.first { self.open(date: first.date) }
@@ -730,6 +749,7 @@ final class AppState: ObservableObject {
     // MARK: - Ingest
 
     func beginIngest() {
+        guard flushPersist() else { return }
         detectedCards = Ingest.detectSDCards()
         if ingestSource.isEmpty, let first = detectedCards.first { ingestSource = first.path }
         ingestProgress = IngestProgress()
@@ -737,7 +757,7 @@ final class AppState: ObservableObject {
     }
 
     func startIngest() {
-        flushPersist()
+        guard flushPersist() else { return }
         let source = ingestSource.trimmingCharacters(in: .whitespacesAndNewlines)
         var progress = IngestProgress()
         progress.running = true
@@ -865,7 +885,7 @@ final class AppState: ObservableObject {
     }
 
     func saveAndClose() {
-        flushPersist()
+        guard flushPersist() else { return }
         NSApp.keyWindow?.performClose(nil)
     }
 
