@@ -15,12 +15,13 @@
 - [x] Integrate reviewed source, update authoritative audit and first-wave tracker with actual evidence and remaining limits.
 - [x] Rebuild/verify isolated candidate only after integration. Installed/dist/running app unchanged unless user authorizes replacement.
 - [x] Remove child's temporary AGENTS.md after review; archive its exact contract with reports.
-- [ ] Close/remove ONLY completed owned worktree wV after user approval; preserve branch/commits/report.
-- [ ] User-authorized app replacement and native/live acceptance; no real Trash/physical cross-volume/GUI clearance from synthetic checks.
+- [x] Close/remove ONLY completed owned worktree wV after user approval; preserve branch/commits/report.
+- [x] User-authorized update of project dist/PhotoCull.app, with previous bundle preserved; strictly verify signature and exact candidate executable hash, do not launch.
+- [ ] Separately authorized native/live acceptance; no real Trash/physical cross-volume/GUI clearance from synthetic checks.
 
 ## Dispatch
 
-- Parent wB:p1 / wB; completed child sol-finalize-safety / wV:p1 / wV:t1 / workspace wV, openai-codex/gpt-6.1-sol --thinking high. Previous luna-finalize-safety exited; partial commit/report preserved. Final6fe4f45 reviewed and merged745e3b3; clean worker checkout retained pending cleanup approval.
+- Parent wB:p1 / wB; completed child sol-finalize-safety / former wV:p1 / wV:t1 / workspace wV, openai-codex/gpt-6.1-sol --thinking high. Previous luna-finalize-safety exited; partial commit/report preserved. Final6fe4f45 reviewed and merged745e3b3; user-approved clean worktree/workspace removal complete, branch/report retained.
 - Branch fix/luna-finalize-safety; checkout /Users/agbocsardi/.herdr/worktrees/swift-photocull/fix-luna-finalize-safety.
 - Initial base 130f04024889c5af23b7cf92d49d2a5690ec710e; Sol starts from committed unaccepted partial c03e329e7cc7f252cff271a083b9526b1ee24cb6. Parent source unchanged; no focus switch.
 - Original assignment: /private/tmp/photocull-finalize-safety-2026-10-03/assignment.txt. Current handoff: /private/tmp/photocull-finalize-safety-2026-10-03/sol/handoff.txt; report: sol/report.md. Exact inputs/runtimes/preflight/outputs/permissions are also in updated child-only AGENTS.md.
@@ -34,7 +35,7 @@
 - Recovery record blocks silent retries after partial failure/crash; initially manual recovery, no crash-idempotence/automatic rollback promise.
 - Shared in-app gate and cooperating Finalize advisory lock are not immunity to malicious/uncoordinated writers. Parent reviews exact supported boundary before clearing Finalize.
 - Fixed export cap two/autoreleasepool is conservative policy; no invented throughput/latency/peak-memory claim.
-- Review and integration checks are complete for source745e3b3. Updated signed candidate remains uninstalled; installed/dist/running app unchanged. Keep avoiding Finalize in the old app; native/live acceptance requires separate authorization.
+- Review and integration checks are complete for source745e3b3. User subsequently authorized updating ONLY project dist/PhotoCull.app; previous bundle backed up. No launch/restart or other installed-app replacement. Keep avoiding Finalize in old running/installed copies; native/live acceptance requires separate authorization.
 
 ## Log
 
@@ -73,3 +74,9 @@
 - Ad-hoc signed and codesign --verify --deep --strict verified candidate: /private/tmp/photocull-parent-integrated-finalize-745e3b3/release/PhotoCull.app. Original plist/icon/menu resources retained; plist lint passes. source-commit.txt/executable.sha256 identify candidate. No installed/dist/running app replacement or launch.
 - Exact child-only AGENTS.md archived as sol/runtime-contract-reviewed.md plus SHA256, then removed; worker checkout clean at6fe4f45. Parent root remains absent. Worker tab/worktree/branch/report retained pending cleanup approval.
 - Remaining boundaries: actual system Trash, genuine cross-volume filesystem behavior, GUI/delegate integration and crash recovery are untested; injected EXDEV proves real fallback sequence, not hardware. Sidecars/original-bearing claims retained; recovery is manual and blocks silent retry, not automatic rollback. Native advisory locks/private namespaces do not exclude hostile/uncoordinated writers. No new UI timing/RSS/throughput claim.
+
+### 2026-10-03 — user-approved project bundle update and final worker cleanup
+
+- User chose Update project dist and Remove finished worker in explicit permission questions. Staged candidate beside existing bundle; verified signature and matching executable SHA256 BEFORE replacement. Preserved old bundle as dist/PhotoCull.backup-947FB036-CAE2-455C-82F4-4FD6BD207C11.app; renamed verified stage to dist/PhotoCull.app, then strictly verified signature and exact candidate hash again. Installation paths/hashes: /private/tmp/photocull-parent-integrated-finalize-745e3b3/installation/. No launch/restart, real data/Trash/GUI or other installed-copy changes.
+- Matched idle sol-finalize-safety identity wV:p1/wV in Herdr agent list, verified clean checkout including ignored/untracked files at6fe4f45, merged ancestry and external report/runtime contract. Removed ONLY owned wV via herdr worktree remove --workspace wV, no force. Branch fix/luna-finalize-safety and reports/evidence retained; parent now the only PhotoCull Git worktree. Unrelated workspaces untouched. Removal/identity JSON: /private/tmp/photocull-finalize-safety-2026-10-03/cleanup/.
+- Live/native acceptance remains pending; copying an executable is not testing the running app or actual destructive filesystem behavior.

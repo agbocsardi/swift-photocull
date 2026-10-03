@@ -99,16 +99,23 @@ No unfiltered legacy suite, GUI, real config/library/photos/mounts/Trash ran.
 **Latest signed/strictly-verified isolated candidate:**
 `/private/tmp/photocull-parent-integrated-finalize-745e3b3/release/PhotoCull.app`;
 source commit and executable SHA256 beside it. Older first-wave candidate and
-reports are retained. **Installed/dist/running app still unchanged: do not
-assume the new safeguards are present there; keep avoiding its Finalize.**
-Source acceptance is not installation or clearance for live destructive use.
+reports are retained. **User subsequently authorized updating only
+`dist/PhotoCull.app`: its signature and exact candidate hash are verified.**
+Previous bundle is preserved as
+`dist/PhotoCull.backup-947FB036-CAE2-455C-82F4-4FD6BD207C11.app`; installation
+paths/hashes are under the candidate root's `installation/`. No launch/restart
+or other installed-copy replacement: do not assume running/other installed
+copies have the new safeguards; keep avoiding their Finalize. Copying the
+candidate is not native/live destructive-use clearance.
 Actual system Trash, physical cross-volume behavior, GUI/delegate integration,
 manual crash recovery and native scroll/placeholder feel remain untested.
 No controlled input-to-paint, throughput or app-memory measurement added.
 
 Child-only temporary runtime instructions were archived with report then
-removed; parent root `AGENTS.md` remains absent. Completed clean safety
-worktree/tab retained pending user cleanup approval, branch/report preserved.
+removed; parent root `AGENTS.md` remains absent. User-approved completed clean
+safety worktree/workspace wV removal is complete, without force; branch/report
+preserved. Identity/removal JSON is in
+`/private/tmp/photocull-finalize-safety-2026-10-03/cleanup/`.
 
 ### Original review findings (baseline gates; status above)
 
