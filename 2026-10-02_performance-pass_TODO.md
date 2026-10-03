@@ -16,6 +16,7 @@ Branch: `performance`. Audit report: `docs/performance-audit.md`.
 - [ ] Step-snappy wave: evaluate step-snappy-impl (A two-stage decode, B debounced step-open,
       C non-animated session scroll, E neighbor-session prefetch), merge, verify, rebuild dist
 - [ ] User live-test: session stepping feel
+- [ ] Independent Codex/high audit — tracked in `2026-10-03_codex-performance-audit_TODO.md`; step-snappy report received, held unmerged for review.
 
 ## Log
 
