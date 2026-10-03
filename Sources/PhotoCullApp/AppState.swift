@@ -144,9 +144,12 @@ final class AppState: ObservableObject {
 
     @Published var finalizeStats: [FinalizeStats] = []
     @Published var cropExportMode: CropExportMode = .applyCrop
-    /// True while a finalize runs on a background task. Finalize moves whole
-    /// folders; a second concurrent run would race it.
-    @Published private(set) var finalizeRunning = false
+    enum BulkOperation: Equatable { case preparing(UUID), finalize(UUID), ingest(UUID), repair(UUID) }
+    @Published private(set) var bulkOperation: BulkOperation?
+    var finalizeRunning: Bool {
+        if case .finalize = bulkOperation { return true }
+        return false
+    }
 
     // Views must observe the loader via environmentObject, not through app —
     // forwarding its changes here re-invalidated the whole window per decode.
@@ -245,6 +248,7 @@ final class AppState: ObservableObject {
     // MARK: - Library
 
     func reloadLibrary() {
+        guard bulkOperation == nil else { return }
         sessions = Library.loadSessions(cfg: cfg)
         if let active = activeDate, !sessions.contains(where: { $0.date == active }) {
             clearActiveSession()
@@ -267,7 +271,7 @@ final class AppState: ObservableObject {
     // MARK: - Session loading
 
     func open(date: String) {
-        guard flushPersist() else { return }
+        guard bulkOperation == nil, !cropMode, flushPersist() else { return }
         do {
             let folder = Library.inboxFolder(cfg: cfg, date: date)
             let loaded = try Session.load(folder: folder)
@@ -319,6 +323,7 @@ final class AppState: ObservableObject {
     /// longer hits disk once per key, the sidecar lands ~500 ms after the
     /// last one (or immediately via `flushPersist`).
     private func schedulePersist() {
+        guard bulkOperation == nil else { return }
         persistTask?.cancel()
         guard let target = session, let date = activeDate else { return }
         persistTask = Task { [weak self] in
@@ -333,6 +338,7 @@ final class AppState: ObservableObject {
     /// A failure leaves it active and prevents the caller from proceeding.
     @discardableResult
     private func flushPersist() -> Bool {
+        guard bulkOperation == nil else { return false }
         persistTask?.cancel()
         persistTask = nil
         guard let session, let date = activeDate else { return true }
@@ -363,7 +369,7 @@ final class AppState: ObservableObject {
     /// Apply a change, record it for undo, drop any redo history.
     private func run(_ what: String, change: @escaping (Session) -> Void,
                      revert: @escaping (Session) -> Void) {
-        guard let target = session, let date = activeDate else { return }
+        guard bulkOperation == nil, let target = session, let date = activeDate else { return }
         change(target)
         undoStack.append(Edit(what: what, date: date, target: target,
                               change: change, revert: revert))
@@ -373,6 +379,7 @@ final class AppState: ObservableObject {
     }
 
     func undo() {
+        guard bulkOperation == nil else { return }
         guard let edit = undoStack.popLast() else { toastMessage("Nothing to undo"); return }
         edit.revert(edit.target)
         redoStack.append(edit)
@@ -383,6 +390,7 @@ final class AppState: ObservableObject {
     }
 
     func redo() {
+        guard bulkOperation == nil else { return }
         guard let edit = redoStack.popLast() else { toastMessage("Nothing to redo"); return }
         edit.change(edit.target)
         undoStack.append(edit)
@@ -400,7 +408,7 @@ final class AppState: ObservableObject {
     // MARK: - Navigation
 
     func setIndex(_ newIndex: Int) {
-        guard !pairs.isEmpty else { return }
+        guard bulkOperation == nil, !cropMode, !pairs.isEmpty else { return }
         index = min(max(0, newIndex), pairs.count - 1)
         session?.lastIndex = index
         schedulePersist()
@@ -660,17 +668,23 @@ final class AppState: ObservableObject {
     /// folder + parses the sidecar — keep it off the main thread so the sheet
     /// opens without a stall.
     func beginFinalize(date: String) {
-        guard flushPersist() else { return }
+        guard bulkOperation == nil, !cropMode, flushPersist() else { return }
+        let token = UUID()
+        bulkOperation = .preparing(token)
         let cfg = self.cfg
         Task.detached(priority: .userInitiated) {
             do {
                 let stats = try Finalize.summary(cfg: cfg, date: date)
                 await MainActor.run {
+                    guard self.bulkOperation == .preparing(token) else { return }
+                    self.bulkOperation = nil
                     self.finalizeStats = [stats]
                     if self.modal == nil { self.modal = .finalize(date: date) }
                 }
             } catch {
                 await MainActor.run {
+                    guard self.bulkOperation == .preparing(token) else { return }
+                    self.bulkOperation = nil
                     self.fail("Could not read session: \(error.localizedDescription)")
                 }
             }
@@ -678,19 +692,25 @@ final class AppState: ObservableObject {
     }
 
     func beginGlobalFinalize() {
-        guard flushPersist() else { return }
+        guard bulkOperation == nil, !cropMode, flushPersist() else { return }
+        let token = UUID()
+        bulkOperation = .preparing(token)
         let dates = selectedDates.isEmpty ? visibleSessions.map(\.date) : Array(selectedDates)
-        guard !dates.isEmpty else { return }
+        guard !dates.isEmpty else { bulkOperation = nil; return }
         let cfg = self.cfg
         Task.detached(priority: .userInitiated) {
             do {
                 let stats = try dates.sorted().map { try Finalize.summary(cfg: cfg, date: $0) }
                 await MainActor.run {
+                    guard self.bulkOperation == .preparing(token) else { return }
+                    self.bulkOperation = nil
                     self.finalizeStats = stats
                     if self.modal == nil { self.modal = .globalFinalize }
                 }
             } catch {
                 await MainActor.run {
+                    guard self.bulkOperation == .preparing(token) else { return }
+                    self.bulkOperation = nil
                     self.fail("Could not read sessions: \(error.localizedDescription)")
                 }
             }
@@ -698,7 +718,7 @@ final class AppState: ObservableObject {
     }
 
     func confirmFinalize() {
-        guard !finalizeRunning, flushPersist() else { return }
+        guard bulkOperation == nil, !cropMode, flushPersist() else { return }
         let dates: [String]
         switch modal {
         case .finalize(let date): dates = [date]
@@ -710,7 +730,8 @@ final class AppState: ObservableObject {
         // whole run to a background task so the UI
         // stays responsive for the (long) move/trash/dump phase.
         modal = nil
-        finalizeRunning = true
+        let token = UUID()
+        bulkOperation = .finalize(token)
         toastMessage("Finalizing…")
         let cfg = self.cfg
         let cropMode = self.cropExportMode
@@ -724,22 +745,30 @@ final class AppState: ObservableObject {
                     r = try Finalize.runMulti(cfg: cfg, dates: dates, dump: true, cropMode: cropMode)
                 }
                 await MainActor.run {
-                    self.finalizeRunning = false
+                    guard self.bulkOperation == .finalize(token) else { return }
+                    self.bulkOperation = nil
+                    self.undoStack.removeAll { dates.contains($0.date) }
+                    self.redoStack.removeAll { dates.contains($0.date) }
                     self.selectedDates.removeAll()
                     if let d = self.activeDate, dates.contains(d) {
                         self.clearActiveSession()
                     }
                     self.reloadLibrary()
                     if let first = self.sessions.first { self.open(date: first.date) }
+                    let retained = r.retainedFolders.isEmpty ? "" : " — retained: \(r.retainedFolders.joined(separator: ", "))"
                     if dates.count == 1 {
-                        self.toastMessage("Finalized \(dates[0]) — \(r.archived) archived, \(r.trashed) trashed")
+                        self.toastMessage("Finalized \(dates[0]) — \(r.archived) archived, \(r.trashed) trashed\(retained)")
                     } else {
-                        self.toastMessage("Finalized \(r.sessions) sessions — \(r.archived) archived, \(r.trashed) trashed")
+                        self.toastMessage("Finalized \(r.sessions) sessions — \(r.archived) archived, \(r.trashed) trashed\(retained)")
                     }
                 }
             } catch {
                 await MainActor.run {
-                    self.finalizeRunning = false
+                    guard self.bulkOperation == .finalize(token) else { return }
+                    self.bulkOperation = nil
+                    self.undoStack.removeAll { dates.contains($0.date) }
+                    self.redoStack.removeAll { dates.contains($0.date) }
+                    if let active = self.activeDate, dates.contains(active) { self.clearActiveSession() }
                     self.fail("Finalize failed: \(error.localizedDescription)")
                 }
             }
@@ -749,7 +778,7 @@ final class AppState: ObservableObject {
     // MARK: - Ingest
 
     func beginIngest() {
-        guard flushPersist() else { return }
+        guard bulkOperation == nil, !cropMode, flushPersist() else { return }
         detectedCards = Ingest.detectSDCards()
         if ingestSource.isEmpty, let first = detectedCards.first { ingestSource = first.path }
         ingestProgress = IngestProgress()
@@ -757,7 +786,9 @@ final class AppState: ObservableObject {
     }
 
     func startIngest() {
-        guard flushPersist() else { return }
+        guard bulkOperation == nil, flushPersist() else { return }
+        let token = UUID()
+        bulkOperation = .ingest(token)
         let source = ingestSource.trimmingCharacters(in: .whitespacesAndNewlines)
         var progress = IngestProgress()
         progress.running = true
@@ -770,9 +801,16 @@ final class AppState: ObservableObject {
             do {
                 let result = try Ingest.run(cfg: cfg, source: source.isEmpty ? nil : URL(fileURLWithPath: source)) { p in
                     guard throttle.shouldPublish(force: p.done) else { return }
-                    Task { @MainActor in self.ingestProgress = p }
+                    Task { @MainActor in
+                        guard self.bulkOperation == .ingest(token), !self.ingestProgress.done,
+                              p.copied >= self.ingestProgress.copied,
+                              p.skipped >= self.ingestProgress.skipped else { return }
+                        self.ingestProgress = p
+                    }
                 }
                 await MainActor.run {
+                    guard self.bulkOperation == .ingest(token) else { return }
+                    self.bulkOperation = nil
                     var done = self.ingestProgress
                     done.running = false
                     done.done = true
@@ -784,6 +822,8 @@ final class AppState: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
+                    guard self.bulkOperation == .ingest(token) else { return }
+                    self.bulkOperation = nil
                     var p = self.ingestProgress
                     p.running = false
                     p.done = true
@@ -845,12 +885,17 @@ final class AppState: ObservableObject {
     }
 
     func applyPairRepair() {
+        guard bulkOperation == nil else { return }
+        let token = UUID()
+        bulkOperation = .repair(token)
         do {
             let report = try PairRepair.apply(cfg: cfg)
             toastMessage("Re-paired \(report.renamed) RAW files")
+            bulkOperation = nil
             reloadLibrary()
             if let date = activeDate { open(date: date) }
         } catch {
+            bulkOperation = nil
             fail("Repair failed: \(error.localizedDescription)")
         }
     }
@@ -885,7 +930,7 @@ final class AppState: ObservableObject {
     }
 
     func saveAndClose() {
-        guard flushPersist() else { return }
+        guard bulkOperation == nil, flushPersist() else { return }
         NSApp.keyWindow?.performClose(nil)
     }
 
@@ -1067,8 +1112,7 @@ final class AppState: ObservableObject {
 }
 
 /// Rate-limits main-thread progress publication from the ingest copy loop.
-/// Called from one background thread, but declared `@unchecked Sendable` to
-/// be honest about it; the lock costs nothing at this rate.
+/// Progress callbacks may arrive concurrently from ingest copy workers.
 private final class ProgressThrottle: @unchecked Sendable {
     private let lock = NSLock()
     private var last = Date.distantPast

@@ -81,7 +81,7 @@ public final class Session {
 
     /// Load from `folder/.photocull.json`; returns a fresh session when absent.
     /// A corrupt file also yields a fresh session; only I/O errors throw.
-    public static func load(folder: URL) throws -> Session {
+    public static func load(folder: URL, strict: Bool = false) throws -> Session {
         let url = folder.appendingPathComponent(Session.fileName)
         let data: Data
         do {
@@ -98,7 +98,10 @@ public final class Session {
             throw error
         }
 
-        guard !data.isEmpty else { return Session.fresh() }
+        guard !data.isEmpty else {
+            if strict { throw SidecarError.invalid("empty sidecar") }
+            return Session.fresh()
+        }
 
         struct RawShape: Decodable {
             var version: Int?
@@ -109,7 +112,11 @@ public final class Session {
             var rotations: [String: Int]?
         }
         guard let raw = try? JSONDecoder().decode(RawShape.self, from: data) else {
+            if strict { throw SidecarError.invalid("malformed sidecar") }
             return Session.fresh() // corrupt JSON must not crash
+        }
+        if strict, raw.version != 1 {
+            throw SidecarError.invalid("unsupported sidecar version \(raw.version.map(String.init) ?? "missing")")
         }
         var decisions: [String: Decision] = [:]
         for (k, v) in raw.decisions ?? [:] { decisions[k.uppercased()] = v }
@@ -141,7 +148,15 @@ public final class Session {
         if !rotations.isEmpty { parts.append("  \"rotations\": \(Self.rotationsJSON(rotations))") }
         let out = "{\n" + parts.joined(separator: ",\n") + "\n}"
         let url = folder.appendingPathComponent(Session.fileName)
-        try out.data(using: .utf8)?.write(to: url)
+        try out.data(using: .utf8)?.write(to: url, options: .atomic)
+    }
+
+    public enum SidecarError: Error, LocalizedError {
+        case invalid(String)
+        public var errorDescription: String? {
+            if case .invalid(let reason) = self { return "Unsafe Finalize sidecar: \(reason)" }
+            return nil
+        }
     }
 
     public func get(_ stem: String) -> Decision {

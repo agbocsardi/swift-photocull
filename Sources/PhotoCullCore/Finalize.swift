@@ -33,19 +33,24 @@ public struct FinalizeResult: Sendable, Equatable {
     public var dumped: Int
     public var cropped: Int
     public var dumpFolder: String
-    public init(sessions: Int, archived: Int, trashed: Int, dumped: Int, cropped: Int, dumpFolder: String) {
+    public var retainedFolders: [String]
+    public init(sessions: Int, archived: Int, trashed: Int, dumped: Int, cropped: Int, dumpFolder: String,
+                retainedFolders: [String] = []) {
         self.sessions = sessions; self.archived = archived; self.trashed = trashed
         self.dumped = dumped; self.cropped = cropped; self.dumpFolder = dumpFolder
+        self.retainedFolders = retainedFolders
     }
 }
 
 public enum Finalize {
     /// Counts for the confirmation sheet.
     public static func summary(cfg: PCConfig, date: String) throws -> FinalizeStats {
+        try validateDate(date)
         let folder = try inboxFolder(cfg: cfg, date: date)
+        try validateInputFolder(folder)
         let (pairs, _) = try FilePairs.scan(folder: folder,
                                             jpgExts: cfg.jpgExtSet, rawExts: cfg.rawExtSet)
-        let session = try Session.load(folder: folder)
+        let session = try Session.load(folder: folder, strict: true)
         var keep = 0, reject = 0, undecided = 0, keepRAW = 0, rejectRAW = 0
         for pair in pairs {
             switch session.get(pair.stem) {
@@ -69,6 +74,13 @@ public enum Finalize {
     public static func run(cfg: PCConfig, date: String, dump: Bool,
                            cropMode: CropExportMode,
                            dumpOverride: URL?) throws -> FinalizeResult {
+        try run(cfg: cfg, date: date, dump: dump, cropMode: cropMode,
+                dumpOverride: dumpOverride, syntheticTrash: nil)
+    }
+
+    package static func run(cfg: PCConfig, date: String, dump: Bool,
+                            cropMode: CropExportMode, dumpOverride: URL?,
+                            syntheticTrash: ((URL) throws -> Void)?) throws -> FinalizeResult {
         // App Nap guard: mark CPU+IO as user-initiated so macOS does not
         // throttle the run, while still allowing idle *display* sleep
         // (not idleSystemSleepDisabled).
@@ -77,8 +89,36 @@ public enum Finalize {
             reason: "PhotoCull finalize in progress")
         defer { ProcessInfo.processInfo.endActivity(activity) }
 
+        try validateDate(date)
         let fm = FileManager.default
         let folder = try inboxFolder(cfg: cfg, date: date)
+        try validateInputFolder(folder)
+        let directoryFD = folder.withUnsafeFileSystemRepresentation { path in
+            path.map { Darwin.open($0, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW) } ?? -1
+        }
+        guard directoryFD >= 0 else { throw posixError("open session directory") }
+        let lockURL = folder.appendingPathComponent(".photocull-operation.lock")
+        let lockFD = lockURL.withUnsafeFileSystemRepresentation {
+            $0.map { Darwin.open($0, O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0o600) } ?? -1
+        }
+        guard lockFD >= 0 else { _ = Darwin.close(directoryFD); throw posixError("open operation lock") }
+        var lock = flock()
+        lock.l_type = Int16(F_WRLCK); lock.l_whence = Int16(SEEK_SET)
+        defer {
+            lock.l_type = Int16(F_UNLCK)
+            _ = Darwin.fcntl(lockFD, F_SETLK, &lock)
+            _ = Darwin.close(lockFD)
+            _ = Darwin.close(directoryFD)
+        }
+        guard Darwin.fcntl(lockFD, F_SETLK, &lock) == 0 else {
+            throw SafetyError("Another Finalize owns this session directory")
+        }
+        let recovery = folder.appendingPathComponent(".photocull-recovery.json")
+        guard !pathExists(recovery) else {
+            throw SafetyError("Manual recovery required; inspect \(recovery.path)")
+        }
+        let sidecar = folder.appendingPathComponent(Session.fileName)
+        let sidecarBytes = try? Data(contentsOf: sidecar)
         let archiveFolder = URL(fileURLWithPath: PCConfig.expandHome(cfg.paths.archive))
             .appendingPathComponent(date)
         let dumpFolder = dumpOverride
@@ -87,7 +127,11 @@ public enum Finalize {
         let (pairs, orphanRAWs) = try FilePairs.scan(folder: folder,
                                                      jpgExts: cfg.jpgExtSet,
                                                      rawExts: cfg.rawExtSet)
-        let session = try Session.load(folder: folder)
+        let session = try Session.load(folder: folder, strict: true)
+        try verifySidecar(sidecar, expected: sidecarBytes)
+        try validateOutputs(input: folder, archive: archiveFolder, dump: dumpFolder, dumpEnabled: dump)
+        let identities = try (pairs.flatMap { [$0.jpg] + ($0.raw.map { [$0] } ?? []) } + orphanRAWs)
+            .reduce(into: [String: FileIdentity]()) { $0[$1.lastPathComponent] = try FileIdentity.read($1) }
 
         if dump {
             try fm.createDirectory(at: dumpFolder, withIntermediateDirectories: true)
@@ -192,14 +236,31 @@ public enum Finalize {
         let outcomes = exportAllParallel(jobs: jobs)
 
         // PHASE 3 — all side effects, in exact scan order, fail-fast.
+        let recoveryJSON = try JSONSerialization.data(withJSONObject: [
+            "invocation": UUID().uuidString, "date": date,
+            "sources": identities.mapValues(\.description),
+            "archive": archiveFolder.path, "dump": dumpFolder.path
+        ], options: [.sortedKeys])
+        guard recoveryJSON.withUnsafeBytes({ raw in
+            recovery.withUnsafeFileSystemRepresentation { path in
+                guard let path, let bytes = raw.baseAddress else { return false }
+                let fd = Darwin.open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0o600)
+                guard fd >= 0 else { return false }
+                defer { _ = Darwin.close(fd) }
+                return Darwin.write(fd, bytes, raw.count) == raw.count && Darwin.fsync(fd) == 0
+            }
+        }) else { throw SafetyError("Could not exclusively create recovery record at \(recovery.path)") }
         var firstFailure: Error?
         loop: for plan in plans {
+            try verifySidecar(sidecar, expected: sidecarBytes)
+            try verifyIdentity(plan.jpg, identities[plan.jpg.lastPathComponent])
+            if let raw = plan.raw { try verifyIdentity(raw, identities[raw.lastPathComponent]) }
             switch plan.kind {
             case .reject:
-                try trash(plan.jpg)
+                if let syntheticTrash { try syntheticTrash(plan.jpg) } else { try trash(plan.jpg) }
                 trashed += 1
                 if let raw = plan.raw {
-                    try trash(raw)
+                    if let syntheticTrash { try syntheticTrash(raw) } else { try trash(raw) }
                     trashed += 1
                 }
                 continue
@@ -241,10 +302,13 @@ public enum Finalize {
             archived += 1
         }
 
-        cleanupSessionFolder(folder)
+        try verifySidecar(sidecar, expected: sidecarBytes)
+        let removed = cleanupSessionFolder(folder)
+        _ = unlinkPath(recovery)
 
         return FinalizeResult(sessions: 1, archived: archived, trashed: trashed,
-                              dumped: dumped, cropped: cropped, dumpFolder: dumpFolder.path)
+                              dumped: dumped, cropped: cropped, dumpFolder: dumpFolder.path,
+                              retainedFolders: removed ? [] : [folder.path])
     }
 
     /// Best-effort cleanup: preserve decisions whenever residual entries are
@@ -252,17 +316,9 @@ public enum Finalize {
     /// A failed listing also retains the sidecar. This check is NOT an ownership
     /// lock: a concurrent writer arriving after it may lose the sidecar,
     /// but rmdir below can never recursively delete that writer's files.
-    package static func cleanupSessionFolder(_ folder: URL) {
-        let fm = FileManager.default
-        guard let names = try? fm.contentsOfDirectory(atPath: folder.path),
-              names.allSatisfy({ $0 == Session.fileName }) else { return }
-
-        // unlink only the known sidecar; unlike removeItem it cannot recurse
-        // if that path is replaced by a directory during cleanup.
-        folder.appendingPathComponent(Session.fileName).withUnsafeFileSystemRepresentation { path in
-            if let path { _ = Darwin.unlink(path) }
-        }
-        _ = removeEmptyDirectory(folder)
+    @discardableResult
+    package static func cleanupSessionFolder(_ folder: URL) -> Bool {
+        removeEmptyDirectory(folder)
     }
 
     /// Atomic, empty-only removal. Nonempty/inaccessible directories are
@@ -295,6 +351,7 @@ public enum Finalize {
             total.trashed += r.trashed
             total.dumped += r.dumped
             total.cropped += r.cropped
+            total.retainedFolders += r.retainedFolders
         }
         total.dumpFolder = dumpFolder.path
         return total
@@ -308,32 +365,89 @@ public enum Finalize {
         return first + " to " + last
     }
 
-    /// Move a file to the macOS Trash (timestamp-suffixed fallback on name collision).
+    /// Fail closed if native Trash rejects the operation; never fall back to ~/.Trash.
     static func trash(_ url: URL) throws {
-        let fm = FileManager.default
-        do {
-            var resulting: NSURL?
-            try fm.trashItem(at: url, resultingItemURL: &resulting)
-        } catch {
-            // Fallback: move into ~/.Trash directly, with a timestamp suffix on collision.
-            let trashDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")
-            try? fm.createDirectory(at: trashDir, withIntermediateDirectories: true)
-            var dest = trashDir.appendingPathComponent(url.lastPathComponent)
-            if fm.fileExists(atPath: dest.path) {
-                let ext = url.pathExtension
-                let base = url.lastPathComponent
-                let stem = ext.isEmpty ? base : String(base.dropLast(ext.count + 1))
-                let suffix = Int(Date().timeIntervalSince1970 * 1_000_000)  // microseconds
-                let name = ext.isEmpty ? "\(stem)_\(suffix)" : "\(stem)_\(suffix).\(ext)"
-                dest = trashDir.appendingPathComponent(name)
+        var resulting: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
+    }
+
+    /// Absolute inbox folder URL for a validated single path component.
+    static func inboxFolder(cfg: PCConfig, date: String) throws -> URL {
+        try validateDate(date)
+        return URL(fileURLWithPath: PCConfig.expandHome(cfg.paths.inbox)).appendingPathComponent(date)
+    }
+
+    private struct SafetyError: LocalizedError {
+        let message: String
+        init(_ message: String) { self.message = message }
+        var errorDescription: String? { message }
+    }
+
+    private struct FileIdentity: CustomStringConvertible {
+        let device: UInt64, inode: UInt64, size: Int64, modified: Int64
+        var description: String { "dev=\(device),ino=\(inode),size=\(size),mtime=\(modified)" }
+        static func read(_ url: URL) throws -> FileIdentity {
+            var st = stat()
+            let result = url.withUnsafeFileSystemRepresentation { path in
+                guard let path else { return -1 }
+                return Int(Darwin.lstat(path, &st))
             }
-            try fm.moveItem(at: url, to: dest)
+            guard result == 0, (st.st_mode & S_IFMT) == S_IFREG else {
+                throw SafetyError("Selected original is not a regular non-symlink file: \(url.path)")
+            }
+            return FileIdentity(device: UInt64(st.st_dev), inode: UInt64(st.st_ino),
+                                size: Int64(st.st_size), modified: Int64(st.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(st.st_mtimespec.tv_nsec))
         }
     }
 
-    /// Absolute inbox folder URL for a date.
-    static func inboxFolder(cfg: PCConfig, date: String) throws -> URL {
-        URL(fileURLWithPath: PCConfig.expandHome(cfg.paths.inbox)).appendingPathComponent(date)
+    private static func validateDate(_ date: String) throws {
+        guard !date.isEmpty, date != ".", date != "..", !date.contains("/"), !date.contains("\\"),
+              URL(fileURLWithPath: date).lastPathComponent == date else {
+            throw SafetyError("Date must be one nonempty path component")
+        }
+    }
+
+    private static func validateInputFolder(_ folder: URL) throws {
+        var st = stat()
+        guard folder.withUnsafeFileSystemRepresentation({ $0.map { Darwin.lstat($0, &st) } ?? -1 }) == 0,
+              (st.st_mode & S_IFMT) == S_IFDIR else {
+            throw SafetyError("Inbox session must be a real, non-symlink directory: \(folder.path)")
+        }
+    }
+
+    private static func canonical(_ url: URL) -> URL { url.resolvingSymlinksInPath().standardizedFileURL }
+    private static func contains(_ parent: URL, _ child: URL) -> Bool {
+        child.path == parent.path || child.path.hasPrefix(parent.path.hasSuffix("/") ? parent.path : parent.path + "/")
+    }
+    private static func validateOutputs(input: URL, archive: URL, dump: URL, dumpEnabled: Bool) throws {
+        let src = canonical(input)
+        for output in dumpEnabled ? [archive, dump] : [archive] {
+            let dst = canonical(output)
+            if contains(src, dst) || contains(dst, src) {
+                throw SafetyError("Output folder overlaps the input session: \(output.path)")
+            }
+        }
+    }
+
+    private static func pathExists(_ url: URL) -> Bool {
+        var st = stat()
+        return url.withUnsafeFileSystemRepresentation { $0.map { Darwin.lstat($0, &st) == 0 } ?? false }
+    }
+    @discardableResult private static func unlinkPath(_ url: URL) -> Bool {
+        url.withUnsafeFileSystemRepresentation { $0.map { Darwin.unlink($0) == 0 } ?? false }
+    }
+    private static func posixError(_ action: String) -> Error {
+        NSError(domain: NSPOSIXErrorDomain, code: Int(errno),
+                userInfo: [NSLocalizedDescriptionKey: "\(action): \(String(cString: strerror(errno)))"])
+    }
+    private static func verifyIdentity(_ url: URL, _ planned: FileIdentity?) throws {
+        guard let planned, try FileIdentity.read(url).description == planned.description else {
+            throw SafetyError("Selected original changed after planning: \(url.path)")
+        }
+    }
+    private static func verifySidecar(_ url: URL, expected: Data?) throws {
+        let actual = try? Data(contentsOf: url)
+        guard actual == expected else { throw SafetyError("Session sidecar changed during Finalize; preserved at \(url.path)") }
     }
 
     /// One cropped export queued by phase 1, executed in phase 2.
@@ -377,54 +491,39 @@ public enum Finalize {
     /// Unreachable placeholder: every child returns an outcome, even on error.
     private struct ExportOutcomeMissing: Error {}
 
-    /// Run cropped exports `jobs` on a TaskGroup capped at the active core
-    /// count. Each export is written to its private stage file; phase 3 does
-    /// the ordered promotion. Returns one outcome per job, aligned with the input; errors
-    /// are reported, never thrown. The group runs on a detached task and the
-    /// synchronous caller waits on a semaphore — `run` stays a synchronous
-    /// API (AppState and the CLI call it directly).
+    /// Native exports run on a small GCD queue, never by blocking a Swift task
+    /// waiting for cooperative executor work. Two jobs is conservative policy,
+    /// not a measured throughput optimum.
     private static func exportAllParallel(jobs: [ExportJob]) -> [ExportOutcome] {
-        final class ResultsBox: @unchecked Sendable { var values: [ExportOutcome] = [] }
-        let box = ResultsBox()
-        let sem = DispatchSemaphore(value: 0)
-        let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
-        Task.detached(priority: .userInitiated) {
-            let results = await withTaskGroup(of: (Int, ExportOutcome).self,
-                                              returning: [ExportOutcome].self) { group in
-                var next = 0
-                func add(_ i: Int) {
-                    let job = jobs[i]
-                    group.addTask {
-                        guard let stage = job.stage else {
-                            return (i, ExportOutcome(error: ExportOutcomeMissing()))
-                        }
-                        do {
-                            try ImagePipeline.export(src: job.src, crop: job.crop, to: stage,
-                                                     quality: 0.9, tilt: job.tilt,
-                                                     quarterTurns: job.turns)
-                            return (i, ExportOutcome(error: nil))  // stays staged for phase 3
-                        } catch {
-                            unlinkOwnedFile(stage)
-                            return (i, ExportOutcome(error: error))
-                        }
+        guard !jobs.isEmpty else { return [] }
+        let queue = OperationQueue()
+        queue.qualityOfService = .userInitiated
+        queue.maxConcurrentOperationCount = min(2, ProcessInfo.processInfo.activeProcessorCount)
+        let lock = NSLock()
+        var outcomes = Array<ExportOutcome?>(repeating: nil, count: jobs.count)
+        var stopped = false
+        for (index, job) in jobs.enumerated() {
+            queue.addOperation {
+                lock.lock(); let shouldStop = stopped; lock.unlock()
+                guard !shouldStop, let stage = job.stage else {
+                    lock.lock(); outcomes[index] = ExportOutcome(error: ExportOutcomeMissing()); lock.unlock()
+                    return
+                }
+                do {
+                    try autoreleasepool {
+                        try ImagePipeline.export(src: job.src, crop: job.crop, to: stage,
+                                                 quality: 0.9, tilt: job.tilt,
+                                                 quarterTurns: job.turns)
                     }
+                    lock.lock(); outcomes[index] = ExportOutcome(error: nil); lock.unlock()
+                } catch {
+                    unlinkOwnedFile(stage)
+                    lock.lock(); stopped = true; outcomes[index] = ExportOutcome(error: error); lock.unlock()
                 }
-                // Keep exactly `width` children in flight; each completion
-                // hands out the next job (files are one job, so ordering
-                // within the group does not affect the phase-3 walk).
-                while next < min(width, jobs.count) { add(next); next += 1 }
-                var out = Array<ExportOutcome?>(repeating: nil, count: jobs.count)
-                for await (i, outcome) in group {
-                    out[i] = outcome
-                    if next < jobs.count { add(next); next += 1 }
-                }
-                return out.map { $0 ?? ExportOutcome(error: ExportOutcomeMissing()) }
             }
-            box.values = results
-            sem.signal()
         }
-        sem.wait()
-        return box.values
+        queue.waitUntilAllOperationsAreFinished()
+        return outcomes.map { $0 ?? ExportOutcome(error: ExportOutcomeMissing()) }
     }
 
     /// A normalized reservation key; folding only the filename is a
