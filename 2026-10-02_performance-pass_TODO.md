@@ -13,6 +13,9 @@ Branch: `performance`. Audit report: `docs/performance-audit.md`.
 - [x] Live crop/tilt feel test (round 1, confirmed in cont. 3 log)
 - [x] CanvasState extraction — landed in wave 3 (perf2-app, commit 4ac83ed)
 - [x] Feature: sidebar step-opens-session — evaluated, merged (2a96314→merge), 415/415, snapshot OK, dist rebuilt. Worktree wJ kept until user tries it
+- [ ] Step-snappy wave: evaluate step-snappy-impl (A two-stage decode, B debounced step-open,
+      C non-animated session scroll, E neighbor-session prefetch), merge, verify, rebuild dist
+- [ ] User live-test: session stepping feel
 
 ## Log
 
@@ -199,6 +202,25 @@ Branch: `performance`. Audit report: `docs/performance-audit.md`.
 - Dispatched **step-opens-impl** (glm-5.3-flash, wJ:p1, branch `feature/step-opens-session`):
   open target in moveCursor when `!= activeDate`, keep Enter/Tab/click semantics unchanged,
   README keyboard-table update, WHY comment. DoD: build + 415/415, AppState.swift + README only.
+
+### 2026-10-03 (cont. 2) — step-snappy wave dispatched
+
+- User reports residual lag stepping sessions (post step-opens). Parent diagnosis from round-2
+  measurements: per step = 150-cell filmstrip teardown/rebuild + animated scrollTo + thumbnail
+  burst + cold 91 ms decode with spinner (placeholder never fires on cold sessions — ImagePane
+  doesn't observe ThumbnailStore) + zero warming of neighbor sessions.
+- Dispatched **step-snappy-impl** (glm-5.3-flash, wK:p1, branch `perf/step-snappy`, 3 files:
+  ImageLoader/AppState/FilmstripPane):
+  **A** two-stage decode (256px stage via ImagePipeline.thumbnail — 0.4 ms embedded — published
+  immediately, full 3072 after; stage-1 not cached; no-embed trade-off documented);
+  **B** 70 ms trailing debounce on step-opens (cursor still moves instantly; flush points in
+  open()/Enter/finalize/ingest; direct opens never debounced);
+  **C** session-switch scrollTo without animation (ViewState lastRev trick; in-session nav
+  stays animated);
+  **E** neighbor-session prefetch of the remembered photo (off-main sidecar+scan+size, maxPixel
+  matched to loadCurrent's target so cache keys align; generation check self-cancels).
+- Awaiting report; then parent review → merge → build + 415/415 + snapshot + dist rebuild →
+  user live-test.
 
 ### 2026-10-03 (cont.) — step-opens evaluated, merged, shipped
 
