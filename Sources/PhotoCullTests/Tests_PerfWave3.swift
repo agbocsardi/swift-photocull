@@ -163,6 +163,7 @@ func suiteFinalizeParallel() throws {
 func suiteIngestConcurrent() throws {
     let fm = FileManager.default
     let tmp = try makeTempDir("ingest-par")
+    defer { try? fm.removeItem(at: tmp) }
 
     // Fake card: two subfolders, seven matching files so the width-4 copy
     // workers actually overlap. Includes a sameFile skip target and a
@@ -202,12 +203,11 @@ func suiteIngestConcurrent() throws {
     let inboxDate = tmp.appendingPathComponent("inbox").appendingPathComponent("2024-09-12")
     try mkfile("N0002.JPG", bytes: 120, in: inboxDate, mod: day)
 
-    final class EventBox: @unchecked Sendable {
-        var events: [IngestProgress] = []
+    let box = LockedBox<[IngestProgress]>([])
+    let res = try Ingest.run(cfg: cfg, source: card) { progress in
+        box.update { $0.append(progress) }
     }
-    let box = EventBox()
-    let res = try Ingest.run(cfg: cfg, source: card) { box.events.append($0) }
-    let events = box.events
+    let events = box.snapshot()
 
     checkEqual(res.copied, 6, "concurrent run copies 6 files")
     checkEqual(res.skipped, 1, "concurrent run skips the size-identical duplicate")
