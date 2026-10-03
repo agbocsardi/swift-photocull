@@ -586,15 +586,25 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// WHY step-opens: moving the sidebar cursor also opens the session it
+    /// lands on, so browsing sessions is one keypress per step instead of
+    /// step-then-Enter. The `!= activeDate` guard keeps stepping a no-op when
+    /// the target is already open (e.g. repeated steps at a clamped end);
+    /// re-opening is cheap anyway (~5 ms + async decode that ImageLoader
+    /// generation-cancels), so rapid stepping is safe. open() never moves
+    /// focus, so pane 1 keeps the keys and you can keep stepping.
     func moveCursor(_ dir: NavDir) {
         let rows = visibleSessions
         guard !rows.isEmpty else { return }
         guard let cursor = cursorDate, let i = rows.firstIndex(where: { $0.date == cursor }) else {
             cursorDate = rows.first?.date
+            if let target = cursorDate, target != activeDate { open(date: target) }
             return
         }
         let next = dir == .next ? min(i + 1, rows.count - 1) : max(i - 1, 0)
-        cursorDate = rows[next].date
+        let target = rows[next].date
+        cursorDate = target
+        if target != activeDate { open(date: target) }
     }
 
     func openCursorSession() {

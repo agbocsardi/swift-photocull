@@ -127,7 +127,7 @@ inspect the interface from a terminal or an agent context.
 | `z` / `x` | mark keep / reject (press again to undo) |
 | `j` / `k` | next / previous photo |
 | `→` / `←` | next / previous photo (in any pane) |
-| `↓` / `↑` | next / previous photo, or session when pane 1 has focus |
+| `↓` / `↑` | next / previous photo, or session when pane 1 has focus (stepping onto a session opens it) |
 | `J` / `K` | next / previous **undecided** photo |
 | `c` | enter crop mode |
 | `o` | open the current JPG in Preview |
@@ -146,7 +146,8 @@ inspect the interface from a terminal or an agent context.
 
 ## Mouse
 
-Every keyboard action has a mouse path. Click a session in the sidebar to open it,
+Every keyboard action has a mouse path. Click a session in the sidebar to open it
+(same as stepping onto it with the keyboard),
 `⌘`-click to mark it for multi-finalize (same as `Space`), click a filmstrip thumbnail
 to jump to a photo, and use the floating action bar over the photo for keep / reject /
 crop / zoom / Preview / Finder. Clicking any pane gives it focus (same as `1`–`4`),
