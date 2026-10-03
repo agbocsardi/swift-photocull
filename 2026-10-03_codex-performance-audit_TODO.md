@@ -8,11 +8,13 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - [x] Verify requested model exists, thinking supported, auth ready, Herdr context and clean git tree.
 - [x] Freeze baseline 222741b67ab2099e8a8a9d33ab9ab6df479c0302 and unmerged step-snappy e9c6b64d938967628c8ad046d7c3c7b7ac68d39e.
 - [x] Dispatch five independent read-only reviewers, no focus changes.
-- [ ] Integrate navigation report (including step-snappy review).
+- [x] Integrate navigation report (including step-snappy review).
 - [x] Integrate render report (including step-snappy review); source-verified blockers recorded below.
 - [ ] Integrate images report (including step-snappy review).
-- [ ] Integrate I/O/concurrency report.
+- [x] Integrate I/O/concurrency report; urgent preservation patch dispatched separately.
 - [ ] Integrate evidence/test-coverage report.
+- [ ] Evaluate urgent finalize-safety-impl patch: empty-only cleanup, residue preservation, dedicated no-Trash tests; integrate/rebuild only after review.
+- [ ] Resolve remaining destructive-operation safety findings (unique pair-consistent names/stages, all-exit cleanup, operation ownership) before treating Finalize as cleared for use.
 - [ ] Resolve step-snappy review findings before merging/shipping that branch.
 - [ ] Consolidate findings into docs/performance-audit.md; distinguish measured/source-proven/hypothesis.
 - [ ] Propose ranked implementation scope, then delegate any approved edits in isolated worktrees.
@@ -56,3 +58,12 @@ Parent: wB:p1. Model: openai-codex/gpt-6.1-sol, --thinking high. All children ki
 - Accepted opportunities for consolidated plan: F2 redundant memo-key flags + bounded off-main settled edits with existing pipeline; F1 large-session filmstrip mounting/request fanout and eviction misses that don't restart .task; F6 three touching LRU reads per successful cell body; F8 sidebar rows' broad subscription (measure before scheduling).
 - Correct prior claims: publisher sends/static observers do not prove exact SwiftUI body counts; a generation guard cannot interrupt ImageIO already running; 70 ms debounce adds single-step delay (not established as masked); current cache entry cap remains 16 despite the old '~20 warm photos' claim.
 - No production code changed or merged. Await navigation/images/io/evidence reports; then consolidate overlapping fixes and prioritize.
+
+### 2026-10-03 — I/O and navigation reports integrated; urgent safety work dispatched
+
+- codex-perf-io (wB:pC): report read in full. Parent verified shipped Finalize recursive cleanup at 218–222 against FilePairs omission rules; successful finalize can permanently remove unselected duplicate-extension originals, unrelated files and concurrent arrivals. User advised to avoid Finalize; no actual library loss established.
+- Safety implementer dispatched: finalize-safety-impl, wM:p1 / wM:t1, workspace wM, branch fix/finalize-preserve-originals, worktree /Users/agbocsardi/.herdr/worktrees/swift-photocull/fix-finalize-preserve-originals, base ee90804, Codex gpt-6.1-sol high. Scope: Finalize empty-only cleanup + retain residue/sidecar + independent synthetic safety tests; no real Trash/user-data tests, no wider refactor. Assignment /tmp/photocull-codex-audit-222741b/finalize-safety-assignment.txt.
+- I/O probe.log inspected: duplicate planned names and mismatched pair suffixes, size-only false identity, competing repair targets, four concurrent progress callbacks and nonmonotonic copied snapshots. These are controlled helper/contract probes, not throughput data. Source confirms name probes reserve nothing, stage cleanup only covers encode failures, core-count exports ignore native working set, and Task+semaphore bridges block cooperative callers. Queue these separately; immediate empty-only patch does not resolve all safety findings.
+- codex-perf-navigation (wB:p9): report read; control-flow probe outputs inspected (mock decoder, NOT ImageIO timing). Baseline retains wrong-photo pixels, duplicates prefetch+foreground, ignores useful superseded results; pending still starts full decode after rejecting stale soft publication. Source verifies outgoing persistence task resolves the current session and open() does not flush before replacement—normal switching can lose remembered index.
+- Navigation/render corroborate pending debounce backtrack, filtered/stale neighbor admission and revision/index scroll defects. Other pending target-policy races include editing/closing/filtering/modals before timer fires. No-op boundary navigation repeats metadata work; request coordination and metadata reuse remain opportunities. Uppercase skip-decided key dispatch issue noted for separate correctness follow-up.
+- No app-source changes merged. Remaining independent reports: images, evidence; urgent safety patch also awaited.
