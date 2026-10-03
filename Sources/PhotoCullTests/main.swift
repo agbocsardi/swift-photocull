@@ -2,14 +2,17 @@ import Foundation
 
 // PhotoCull test runner. Run: swift run PhotoCullTests
 // Exit code 0 = all checks passed.
+// Synthetic, no-Trash regression only: PhotoCullTests --finalize-safety-only
 
-let runners: [(String, () throws -> Void)] = [
+let runners: [(String, () throws -> Void)] = CommandLine.arguments.contains("--finalize-safety-only")
+    ? [("FinalizeSafety", suiteFinalizeSafety)] : [
     ("Config", suiteConfig),
     ("FilePairs", suiteFilePairs),
     ("Session", suiteSession),
     ("Exif", suiteExif),
     ("Ingest", suiteIngest),
     ("Finalize", suiteFinalize),
+    ("FinalizeSafety", suiteFinalizeSafety),
     ("FinalizeParallel", suiteFinalizeParallel),
     ("IngestConcurrent", suiteIngestConcurrent),
     ("ImagePipeline", suiteImagePipeline),
