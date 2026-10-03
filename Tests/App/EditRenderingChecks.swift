@@ -35,6 +35,15 @@ private func expected(_ source: CGImage, turns: Int, tilt: Double, crop: CropRec
     return result
 }
 
+private final class StageAffinity: @unchecked Sendable {
+    private let lock = NSLock()
+    private var observations: [(String, Bool)] = []
+    func record(_ stage: String, isMainThread: Bool) {
+        lock.withLock { observations.append((stage, isMainThread)) }
+    }
+    var snapshot: [(String, Bool)] { lock.withLock { observations } }
+}
+
 private final class Gate: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Never>?
@@ -105,8 +114,25 @@ struct EditRenderingChecks {
         check(idle == equivalent, "key uses effective inputs and normalized turns")
         check(ObjectIdentifier(src) == idle.source, "unedited display preserves source identity")
 
+        let affinity = StageAffinity()
+        let actualKey = EditRenderKey(source: src, url: nil, quarterTurns: 1, cpuTilt: 2,
+                                      crop: CropRect(x: 0.1, y: 0.1, w: 0.8, h: 0.8))
+        let actualRenderer = EditRenderer(stageObserver: {
+            affinity.record($0, isMainThread: Thread.isMainThread)
+        })
+        actualRenderer.submit(EditRenderRequest(key: actualKey, source: src))
+        let actualDeadline = ContinuousClock.now + .seconds(5)
+        while actualRenderer.ready?.key != actualKey && ContinuousClock.now < actualDeadline {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        check(actualRenderer.ready?.key == actualKey, "default renderer completed")
+        check(actualRenderer.ready?.source === src, "ready result retains its identified source")
+        check(affinity.snapshot.map(\.0) == ["quarter", "tilt", "crop"],
+              "affinity observed in each actual default transform stage")
+        check(affinity.snapshot.allSatisfy { !$0.1 }, "all actual transform stages run off main thread")
+
         let gate = Gate()
-        let controlled = EditRenderer { request, isCurrent in
+        let controlled = EditRenderer { request, isCurrent, _ in
             await gate.pause()
             guard await isCurrent() else { return nil }
             return request.source
@@ -139,7 +165,7 @@ struct EditRenderingChecks {
         check(controlled.ready == nil, "reset clears published result")
 
         let resetGate = Gate()
-        let resetRenderer = EditRenderer { request, _ in
+        let resetRenderer = EditRenderer { request, _, _ in
             await resetGate.pause()
             return request.source
         }
