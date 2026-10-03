@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 // Finalize.swift — Phase 3: trash rejects, archive keepers, dump JPGs.
 
@@ -215,14 +216,39 @@ public enum Finalize {
             archived += 1
         }
 
-        // Remove the sidecar, then the (now hopefully empty) inbox date folder.
-        try? fm.removeItem(at: folder.appendingPathComponent(Session.fileName))
-        if fm.fileExists(atPath: folder.path) {
-            try? fm.removeItem(at: folder)
-        }
+        cleanupSessionFolder(folder)
 
         return FinalizeResult(sessions: 1, archived: archived, trashed: trashed,
                               dumped: dumped, cropped: cropped, dumpFolder: dumpFolder.path)
+    }
+
+    /// Best-effort cleanup: preserve decisions whenever residual entries are
+    /// visible (including hidden files, directories and alternate originals).
+    /// A failed listing also retains the sidecar. This check is NOT an ownership
+    /// lock: a concurrent writer arriving after it may lose the sidecar,
+    /// but rmdir below can never recursively delete that writer's files.
+    package static func cleanupSessionFolder(_ folder: URL) {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: folder.path),
+              names.allSatisfy({ $0 == Session.fileName }) else { return }
+
+        // unlink only the known sidecar; unlike removeItem it cannot recurse
+        // if that path is replaced by a directory during cleanup.
+        folder.appendingPathComponent(Session.fileName).withUnsafeFileSystemRepresentation { path in
+            if let path { _ = Darwin.unlink(path) }
+        }
+        _ = removeEmptyDirectory(folder)
+    }
+
+    /// Atomic, empty-only removal. Nonempty/inaccessible directories are
+    /// retained; never substitute an enumerate-then-recursive removal.
+    /// Package-scoped so regression tests need no public API or testable build.
+    @discardableResult
+    package static func removeEmptyDirectory(_ folder: URL) -> Bool {
+        folder.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return false }
+            return Darwin.rmdir(path) == 0
+        }
     }
 
     /// Finalize several sessions into one dump folder named
