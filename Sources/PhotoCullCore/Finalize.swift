@@ -324,12 +324,17 @@ public enum Finalize {
 
     @discardableResult
     public static func runMulti(cfg: PCConfig, dates: [String], dump: Bool, cropMode: CropExportMode) throws -> FinalizeResult {
+        try runMulti(cfg: cfg, dates: dates, dump: dump, cropMode: cropMode, hooks: FinalizeHooks())
+    }
+
+    package static func runMulti(cfg: PCConfig, dates: [String], dump: Bool, cropMode: CropExportMode,
+                                 hooks: FinalizeHooks) throws -> FinalizeResult {
         var total = FinalizeResult(sessions: 0, archived: 0, trashed: 0, dumped: 0, cropped: 0, dumpFolder: "")
         guard !dates.isEmpty else { return total }
         for date in dates { try FinalizeDirectory.basename(date) }
         let folder = URL(fileURLWithPath: PCConfig.expandHome(cfg.paths.dump)).appendingPathComponent(dumpFolderName(dates: dates))
         for date in dates {
-            let result = try run(cfg: cfg, date: date, dump: dump, cropMode: cropMode, dumpOverride: dump ? folder : nil)
+            let result = try run(cfg: cfg, date: date, dump: dump, cropMode: cropMode, dumpOverride: dump ? folder : nil, hooks: hooks)
             total.sessions += result.sessions; total.archived += result.archived; total.trashed += result.trashed
             total.dumped += result.dumped; total.cropped += result.cropped; total.retainedFolders += result.retainedFolders
         }
@@ -428,6 +433,7 @@ public enum Finalize {
                             try input.verify(job.src.lastPathComponent, identities[job.src.lastPathComponent]!)
                             try ImagePipeline.export(src: job.src, crop: job.crop, to: job.stage!, quality: 0.9,
                                                      tilt: job.tilt, quarterTurns: job.turns)
+                            try hooks.boundary?("exported", job.src)
                             try input.verifyVisible(); try input.verify(job.src.lastPathComponent, identities[job.src.lastPathComponent]!)
                         }
                         work.finish(index, error: nil)

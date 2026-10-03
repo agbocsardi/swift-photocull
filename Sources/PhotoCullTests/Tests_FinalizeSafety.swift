@@ -6,6 +6,9 @@ func suiteFinalizeSafety() throws {
     let fm = FileManager.default
     let output = ProcessInfo.processInfo.environment["PC_FINALIZE_SAFETY_OUT"]
         ?? "/tmp/finalize-safety-impl"
+    guard output.hasPrefix("/"), output != "/", output != NSHomeDirectory() else {
+        fatalError("PC_FINALIZE_SAFETY_OUT must be a dedicated absolute root")
+    }
     let root = URL(fileURLWithPath: output, isDirectory: true)
         .appendingPathComponent("synthetic/regression-\(UUID().uuidString)")
     try fm.createDirectory(at: root, withIntermediateDirectories: true)
@@ -133,7 +136,7 @@ func suiteFinalizeSafety() throws {
     unchanged(sidecarPath.appendingPathComponent("original.JPG"), nestedSidecarBytes,
               "sidecar-directory replacement cannot be recursively deleted")
 
-    // Ordinary processing still removes the now-empty folder and sidecar.
+    // Ordinary success retains decisions, even when they are the only remaining entry.
     let complete = try folder("2025-04-01")
     let completeJPG = try write(complete, "A.JPG", 71)
     let completeRAW = try write(complete, "A.RAF", 72)

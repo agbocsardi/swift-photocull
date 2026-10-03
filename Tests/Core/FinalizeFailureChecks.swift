@@ -3,6 +3,24 @@ import Darwin
 import CoreGraphics
 import PhotoCullCore
 
+@_silgen_name("flock") private func probeFlock(_ fd: Int32, _ operation: Int32) -> Int32
+
+func finalizeLockProbe(_ path: String) {
+    let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+    precondition(fd >= 0)
+    defer { close(fd) }
+    precondition(probeFlock(fd, LOCK_EX | LOCK_NB) == -1 && errno == EWOULDBLOCK,
+                 "independent-process nonblocking flock must refuse contention")
+}
+
+private struct FileToken: Equatable {
+    let device: Int32, inode: UInt64
+    static func read(_ url: URL) -> Self {
+        var st = stat()
+        precondition(lstat(url.path, &st) == 0)
+        return Self(device: st.st_dev, inode: st.st_ino)
+    }
+}
 private var checks = 0
 private func expect(_ value: Bool, _ message: String) {
     checks += 1
@@ -189,6 +207,17 @@ func suiteFinalizeFailureChecks() throws {
         let document = try JSONSerialization.jsonObject(with: record) as! [String: Any]
         let plans = document["sources"] as! [[String: Any]]
         expect(plans.allSatisfy { ($0["claim"] as? String)?.hasPrefix(claim.path + "/") == true && $0["identity"] is [String: Any] }, "record has precise structured per-source plans")
+        let journal = URL(fileURLWithPath: document["progress"] as! String)
+        let events = try Data(contentsOf: journal).split(separator: 10).map {
+            try JSONSerialization.jsonObject(with: Data($0)) as! [String: String]
+        }
+        expect(events.contains { $0["location"] == f.archive.appendingPathComponent("A.JPG").path && $0["action"] == "archive" }, "durable progress records precise completed archive path")
+        if phase == "rejectRAW" {
+            expect(events.contains { $0["location"] == f.trash.appendingPathComponent("B.JPG").path && $0["action"] == "Trash" }, "native returned Trash path recorded")
+        }
+        if phase.hasPrefix("reject") {
+            bytes(f.trash.appendingPathComponent(phase == "rejectJPG" ? "B.JPG" : "B.RAF"), Data([222]), "synthetic native Trash collision never overwrites foreign marker")
+        }
         try noStages(f); try retryBlocked(f)
     }
 
@@ -215,16 +244,23 @@ func suiteFinalizeFailureChecks() throws {
     for name in ["A.JPG", "O.RAF"] {
         let f = try setup(), original = Data([70, 71]), replacement = Data([80, 81])
         try write(f.input, name, original); _ = try sidecar(f)
-        let old = f.root.appendingPathComponent("old-\(name)")
-        var fired = false
+        let old = f.root.appendingPathComponent("old-\(name)"), originalIdentity = FileToken.read(f.input.appendingPathComponent(name))
+        var fired = false, replacementIdentity: FileToken?
         _ = failure { _ = try run(f, hooks: FinalizeHooks(boundary: { event, src in
             if event == "beforeClaim", src.lastPathComponent == name {
                 fired = true; try fm.moveItem(at: src, to: old); try replacement.write(to: src)
+                // Equalize size/type/mtime exactly: refusing this replacement requires inode identity, not just metadata.
+                var st = stat(); precondition(lstat(old.path, &st) == 0)
+                var times = [st.st_atimespec, st.st_mtimespec]
+                precondition(utimensat(AT_FDCWD, src.path, &times, AT_SYMLINK_NOFOLLOW) == 0)
+                replacementIdentity = FileToken.read(src)
             }
         }, trash: { _ in fatalError("replacement reached Trash") })) }
         expect(fired, "replacement boundary fired")
         bytes(old, original, "original displaced by external writer retained")
         bytes(f.input.appendingPathComponent(name), replacement, "replacement restored unchanged")
+        expect(FileToken.read(old) == originalIdentity, "displaced original inode remains intact")
+        expect(FileToken.read(f.input.appendingPathComponent(name)) == replacementIdentity && replacementIdentity != originalIdentity, "replacement retains its distinct inode through claim/restore")
         expect((try fm.contentsOfDirectory(atPath: f.archive.path)).isEmpty, "replacement not archived")
         try retryBlocked(f)
     }
@@ -298,6 +334,85 @@ func suiteFinalizeFailureChecks() throws {
         expect(fm.fileExists(atPath: oldRecord.path), "original recovery record retained")
         bytes(f.archive.appendingPathComponent("A.JPG"), original, "record failure preserves completed prefix")
         try retryBlocked(f)
+    }
+    // A source replaced immediately after native encoding must invalidate the export BEFORE any source claim.
+    do {
+        let f = try setup(), replacement = Data([140, 141, 142])
+        let src = f.input.appendingPathComponent("A.JPG"), old = f.root.appendingPathComponent("encoded-original.JPG")
+        try jpeg(src, red: 0.8)
+        let original = try Data(contentsOf: src), originalIdentity = FileToken.read(src)
+        let s = Session.fresh(); s.setCrop("A", CropRect(x: 0.1, y: 0.1, w: 0.8, h: 0.8)); try s.save(folder: f.input)
+        let fired = Locked(false), attemptedClaims = Locked(0)
+        _ = failure { _ = try run(f, edited: true, hooks: FinalizeHooks(boundary: { event, url in
+            if event == "exported" {
+                fired.change { $0 = true }; try fm.moveItem(at: url, to: old); try replacement.write(to: url)
+            }
+            if event == "beforeClaim" { attemptedClaims.change { $0 += 1 } }
+        })) }
+        expect(fired.change { $0 }, "post-encoding stability boundary fires")
+        expect(attemptedClaims.change { $0 } == 0, "unstable encoded source causes no claim admission")
+        bytes(old, original, "post-encoding displaced source bytes intact")
+        expect(FileToken.read(old) == originalIdentity, "encoded original inode intact")
+        bytes(src, replacement, "post-encoding replacement bytes intact")
+        expect((try fm.contentsOfDirectory(atPath: f.dump.path)).isEmpty, "stale encoded output never promoted")
+        try noStages(f); try retryBlocked(f)
+    }
+    // A directory swap after the originals are claimed must restore into the pinned OLD namespace only.
+    do {
+        let f = try setup(), jpg = Data([143]), raw = Data([144]), stranger = Data([145])
+        try write(f.input, "A.JPG", jpg); try write(f.input, "A.RAF", raw); _ = try sidecar(f)
+        let old = f.root.appendingPathComponent("old-claimed-date")
+        var fired = false
+        let error = failure { _ = try run(f, hooks: FinalizeHooks(boundary: { event, _ in
+            if event == "claimed" {
+                fired = true; try fm.moveItem(at: f.input, to: old)
+                try fm.createDirectory(at: f.input, withIntermediateDirectories: false)
+                try write(f.input, "A.JPG", stranger)
+            }
+        })) }
+        expect(fired, "post-claim directory swap fires")
+        bytes(old.appendingPathComponent("A.JPG"), jpg, "first original restored to pinned old date")
+        bytes(old.appendingPathComponent("A.RAF"), raw, "second original restored to pinned old date")
+        bytes(f.input.appendingPathComponent("A.JPG"), stranger, "new visible date never touched")
+        expect(error.localizedDescription.contains(old.path), "recovery diagnostics resolve old pinned directory path")
+        expect((try fm.contentsOfDirectory(atPath: f.archive.path)).isEmpty, "post-claim swap no archive effects")
+    }
+    // Output namespace substitution is refused after dump prefix, without acting on the replacement directory.
+    do {
+        let f = try setup(), jpg = Data([146]), stranger = Data([147])
+        try write(f.input, "A.JPG", jpg); _ = try sidecar(f)
+        let old = f.root.appendingPathComponent("old-archive")
+        var fired = false
+        _ = failure { _ = try run(f, hooks: FinalizeHooks(boundary: { event, _ in
+            if event == "archiveJPG" {
+                fired = true; try fm.moveItem(at: f.archive, to: old)
+                try fm.createDirectory(at: f.archive, withIntermediateDirectories: false)
+                try write(f.archive, "A.JPG", stranger)
+            }
+        })) }
+        expect(fired, "archive substitution fires")
+        bytes(f.archive.appendingPathComponent("A.JPG"), stranger, "replacement output marker untouched")
+        bytes(try claims(f).appendingPathComponent("A.JPG"), jpg, "output swap retains claimed original")
+        bytes(f.dump.appendingPathComponent("A.JPG"), jpg, "output swap preserves dump prefix")
+        try retryBlocked(f)
+    }
+    // Successful rejects use only the invocation's synthetic native handler, even when it returns no path.
+    do {
+        let f = try setup(), jpg = Data([148]), raw = Data([149])
+        try write(f.input, "B.JPG", jpg); try write(f.input, "B.RAF", raw)
+        let metadata = try sidecar(f, reject: true)
+        let result = try run(f, hooks: FinalizeHooks(trash: { owned in
+            let dst = f.trash.appendingPathComponent(owned.lastPathComponent)
+            guard renameatx_np(AT_FDCWD, owned.path, AT_FDCWD, dst.path, UInt32(RENAME_EXCL)) == 0 else {
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            }
+            return nil
+        }))
+        expect(result.trashed == 2 && result.archived == 0, "successful synthetic reject counts pair")
+        bytes(f.trash.appendingPathComponent("B.JPG"), jpg, "successful synthetic JPG marker exact")
+        bytes(f.trash.appendingPathComponent("B.RAF"), raw, "successful synthetic RAW marker exact")
+        bytes(f.input.appendingPathComponent(Session.fileName), metadata, "successful rejection retains decisions")
+        expect((try fm.contentsOfDirectory(atPath: f.input.path)) == [Session.fileName], "successful rejection removes only own metadata/empty claims")
     }
     // Changed bytes before a later pair/orphan preserve the changed decisions and already-completed prefix.
     for target in ["B.JPG", "O.RAF"] {
@@ -394,6 +509,13 @@ func suiteFinalizeFailureChecks() throws {
         let err = failure { _ = try run(f) }
         expect(err.localizedDescription.contains("Another Finalize"), "same-process independent run refused")
         bytes(f.input.appendingPathComponent("A.JPG"), original, "contender has zero original effects")
+        let child = Process(), childFinished = DispatchSemaphore(value: 0)
+        child.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+        child.arguments = ["--flock-probe", f.input.path]
+        child.terminationHandler = { _ in childFinished.signal() }
+        try child.run()
+        guard childFinished.wait(timeout: .now() + 15) == .success else { fatalError("independent process flock timeout") }
+        expect(child.terminationStatus == 0, "independent-process descriptor also refuses lock contention")
         release.signal()
         guard finished.wait(timeout: .now() + 15) == .success else { fatalError("contention finish timeout") }
         expect(outcome.change { $0 } == nil, "first run drains successfully")

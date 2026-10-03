@@ -9,7 +9,7 @@ case "$OUT" in /|/tmp|/private/tmp|/Users|/Users/*/|"$HOME"|"$ROOT"|"$ROOT"/*)
   echo "Refusing unbounded/source output root: $OUT" >&2; exit 2;;
 esac
 # Fresh products/caches only. Existing caller logs are fine; never delete caller-owned output.
-for dir in scratch cache config security pm-swift pm-clang core-swift core-clang app-swift app-clang; do
+for dir in scratch cache config security pm-swift pm-clang core-swift core-clang app-swift app-clang nav-swift nav-clang; do
   if [ -e "$OUT/$dir" ]; then echo "Output already used: $OUT/$dir" >&2; exit 2; fi
   mkdir -p "$OUT/$dir"
 done
@@ -25,6 +25,9 @@ cat > "$OUT/FinalizeCoreMain.swift" <<'SWIFT'
 import Foundation
 @main struct Main {
     static func main() throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--flock-probe" {
+            finalizeLockProbe(CommandLine.arguments[2]); return
+        }
         try suiteFinalizePlanningChecks()
         try suiteFinalizeFailureChecks()
     }
@@ -36,8 +39,8 @@ swiftc -O -swift-version 5 -target arm64-apple-macos14.0 -package-name "$PACKAGE
   "$ROOT/Tests/Core/FinalizePlanningChecks.swift" "$ROOT/Tests/Core/FinalizeFailureChecks.swift" \
   "$OUT/FinalizeCoreMain.swift" "$BIN/libPhotoCullCore.a" -o "$OUT/FinalizeCoreChecks"
 PC_FINALIZE_TEST_OUT="$OUT" "$OUT/FinalizeCoreChecks"
-# App runner is added with the app ownership checkpoint; no GUI application is launched.
-if [ -f "$ROOT/Tests/App/FinalizeOperationChecks.swift" ]; then
+# Real AppState runners; neither launches an application nor initializes appearance/preferences.
+test -f "$ROOT/Tests/App/FinalizeOperationChecks.swift"
   APP_SOURCES=$(find "$ROOT/Sources/PhotoCullApp" -maxdepth 1 -name '*.swift' ! -name PhotoCullApp.swift -print | sort)
   # shellcheck disable=SC2086
   CLANG_MODULE_CACHE_PATH="$OUT/app-clang" \
@@ -45,4 +48,9 @@ if [ -f "$ROOT/Tests/App/FinalizeOperationChecks.swift" ]; then
     -module-cache-path "$OUT/app-swift" -I "$BIN" $APP_SOURCES \
     "$ROOT/Tests/App/FinalizeOperationChecks.swift" "$BIN/libPhotoCullCore.a" -o "$OUT/FinalizeOperationChecks"
   PC_FINALIZE_TEST_OUT="$OUT" "$OUT/FinalizeOperationChecks"
-fi
+  # Existing navigation runner, but with its own caches instead of the old script's shared PM caches.
+  CLANG_MODULE_CACHE_PATH="$OUT/nav-clang" \
+  swiftc -O -swift-version 5 -target arm64-apple-macos14.0 -package-name "$PACKAGE" \
+    -module-cache-path "$OUT/nav-swift" -I "$BIN" $APP_SOURCES \
+    "$ROOT/Tests/App/NavigationChecks.swift" "$BIN/libPhotoCullCore.a" -o "$OUT/NavigationChecks"
+  PC_NAVIGATION_OUT="$OUT" "$OUT/NavigationChecks"

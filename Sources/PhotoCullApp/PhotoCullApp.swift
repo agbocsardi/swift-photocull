@@ -22,7 +22,7 @@ struct PhotoCullApp: App {
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView()
-                .environmentObject(app)
+                .environmentObject(connectedApp)
                 .environmentObject(app.imageLoader)
                 .environmentObject(app.canvas)
                 .frame(minWidth: 940, minHeight: 620)
@@ -67,12 +67,17 @@ struct PhotoCullApp: App {
 
         MenuBarExtra {
             MenuBarView()
-                .environmentObject(app)
+                .environmentObject(connectedApp)
         } label: {
             // A single image is reliable in MenuBarExtra's status-item renderer.
             Image(nsImage: Self.menuBarIcon)
         }
         .menuBarExtraStyle(.window)
+    }
+
+    @MainActor private var connectedApp: AppState {
+        delegate.operationState = app
+        return app
     }
 
     private static let menuBarIcon: NSImage = {
@@ -91,7 +96,14 @@ struct PhotoCullApp: App {
     }()
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var operationState: AppState?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        operationState?.prepareForTermination() == false ? .terminateCancel : .terminateNow
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)

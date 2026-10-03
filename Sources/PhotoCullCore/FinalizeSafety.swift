@@ -152,7 +152,7 @@ final class FinalizeRecovery {
     let directory: FinalizeDirectory
     let claims: FinalizeDirectory
     let fd: Int32
-    let identity: FinalizeIdentity
+    private(set) var identity: FinalizeIdentity
     private let progressFD: Int32
     private let progressIdentity: FinalizeIdentity
     private let document: [String: Any]
@@ -173,7 +173,11 @@ final class FinalizeRecovery {
         var st = stat()
         guard fstat(fd, &st) == 0 else { close(fd); close(progressFD); throw finalizePOSIX("stat recovery record") }
         identity = FinalizeIdentity(st)
-        do { try writeDocument() } catch { close(fd); close(progressFD); throw error }
+        do {
+            try writeDocument()
+            guard fstat(fd, &st) == 0 else { throw finalizePOSIX("stat durable recovery record") }
+            identity = FinalizeIdentity(st)
+        } catch { close(fd); close(progressFD); throw error }
     }
     deinit { close(fd); close(progressFD) }
     private func writeDocument() throws {
@@ -218,7 +222,7 @@ final class FinalizeRecovery {
         // Atomically claim the mutable record name, then verify before unlinking.
         try directory.move(Self.name, to: claims, name: "recovery-metadata")
         let claimed = try claims.readIdentity("recovery-metadata")
-        guard claimed.sameObject(identity) else {
+        guard claimed == identity else {
             throw FinalizeSafetyError("Recovery record replaced; replacement retained at \(claims.currentPath)/recovery-metadata")
         }
         try claims.unlink("recovery-metadata")
