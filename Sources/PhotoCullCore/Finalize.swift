@@ -98,38 +98,29 @@ public enum Finalize {
 
         // ── Three phases (perf wave 3, B1) ─────────────────────────────────
         //
-        // PHASE 1 (serial, exact scan order): PURE PLANNING — no filesystem
-        // side effects beyond the dump/archive directory creations above,
-        // which the old serial loop also did up-front. Classify each pair
-        // and allocate EVERY destination — dump dst, archive jpgDst,
-        // rawDst — via collisionFreeDestination. Allocation must stay
-        // serial: it probes the filesystem with fileExists(), and under
-        // concurrency two workers could probe the same not-yet-written
-        // name, both see "free", and the second write clobbers the first.
-        // Cropped keepers queue an export job.
-        //
-        // PHASE 2 (parallel, width = active core count): cropped exports
-        // via ImagePipeline.export, each written to "<dst>.tmp" — the only
-        // files this phase touches. A failed or cancelled encode then never
-        // leaves a truncated file in the dump: failed encodes remove their
-        // tmp, successes are left staged for phase 3 to promote. All
-        // outcomes are collected; nothing throws here.
-        //
-        // PHASE 3 (serial, exact scan order, fail-fast): every ordered side
-        // effect happens here — rejects trashed, unedited keepers
-        // dump-cloned, staged exports renamed into place, archive moves —
-        // in the original pair order, counters incrementing at the point
-        // of effect. A failure at pair k therefore reproduces the old
-        // serial end state exactly: pairs before k fully processed, k..N
-        // untouched (still in the inbox, not dumped, later rejects not
-        // trashed), and the first error thrown. On the break, staged tmp
-        // exports of unprocessed pairs are removed — after any run (success
-        // or failure) no *.tmp files remain; only a hard crash can leave
-        // them, where the .tmp name marks them as incomplete anyway.
+        // PHASE 1 (serial): classify and reserve destinations in memory before
+        // effects. Reservations prevent plans in this run from aliasing even
+        // when the filesystem probes all report absent. They are not a lock:
+        // an external writer can still race a later copy/move, which must fail
+        // rather than overwrite its file.
+        // PHASE 2 (parallel, current active-core width): edited JPGs encode to
+        // files inside a newly-created private directory under dumpFolder.
+        // PHASE 3 (serial, exact scan order, fail-fast): ordered effects occur
+        // here. A failure preserves the completed prefix, but earlier dump or
+        // archive effects within the failing pair may already have happened.
+        // Deferred cleanup unlinks only this invocation's stage files and
+        // removes its private directory only if empty; crashes may leave it.
 
         // PHASE 1 — planning only.
         var plans: [Plan] = []
         var jobs: [ExportJob] = []
+        var reservations = Set<String>()
+        var inventoriedFolders = Set<String>()
+        for dir in dump ? [archiveFolder, dumpFolder] : [archiveFolder] {
+            if inventoriedFolders.insert(dir.standardizedFileURL.path).inserted {
+                reservations.formUnion(try destinationReservations(in: dir))
+            }
+        }
         for pair in pairs {
             var kind = Plan.Kind.dumpClone
             var dumpDst: URL?
@@ -138,7 +129,8 @@ public enum Finalize {
                 kind = .reject
             default:  // keep and undecided are treated the same
                 if dump {
-                    let dst = collisionFreeDestination(for: pair.jpg, in: dumpFolder)
+                    let dst = reserveDestination(for: pair.jpg, in: dumpFolder,
+                                                 reservations: &reservations)
                     let crop = cropMode == .applyCrop ? session.crop(for: pair.stem) : nil
                     let tilt = cropMode == .applyCrop ? session.tilt(for: pair.stem) : 0
                     let turns = cropMode == .applyCrop ? session.quarterTurns(for: pair.stem) : 0
@@ -152,21 +144,56 @@ public enum Finalize {
                     }
                 }
             }
-            let jpgDst = collisionFreeDestination(for: pair.jpg, in: archiveFolder)
+            var jpgDst: URL?
             var rawDst: URL?
-            if let raw = pair.raw {
-                rawDst = collisionFreeDestination(for: raw, in: archiveFolder)
+            if case .reject = kind {
+                // Rejects have no planned write destinations.
+            } else {
+                if let raw = pair.raw {
+                    let destinations = reservePair(jpg: pair.jpg, raw: raw, in: archiveFolder,
+                                                   reservations: &reservations)
+                    jpgDst = destinations.jpg
+                    rawDst = destinations.raw
+                } else {
+                    jpgDst = reserveDestination(for: pair.jpg, in: archiveFolder,
+                                                reservations: &reservations)
+                }
             }
             plans.append(Plan(kind: kind, jpg: pair.jpg, dumpDst: dumpDst,
                               jpgDst: jpgDst, raw: pair.raw, rawDst: rawDst))
         }
+        var orphanDestinations: [(URL, URL)] = []
+        for raw in orphanRAWs {
+            orphanDestinations.append((raw, reserveDestination(for: raw, in: archiveFolder,
+                                                               reservations: &reservations)))
+        }
 
+        // Create an invocation-owned staging area only when edits need it.
+        var stageDirectory: URL?
+        defer {
+            for job in jobs { if let stage = job.stage { unlinkOwnedFile(stage) } }
+            if let stageDirectory { _ = removeEmptyDirectory(stageDirectory) }
+        }
+        if !jobs.isEmpty {
+            var candidate: URL
+            while true {
+                candidate = dumpFolder.appendingPathComponent(".photocull-stage-\(UUID().uuidString)",
+                                                               isDirectory: true)
+                if try createOwnedDirectory(candidate) {
+                    stageDirectory = candidate
+                    break
+                }
+            }
+            for i in jobs.indices {
+                jobs[i].stage = candidate.appendingPathComponent(String(i))
+            }
+        }
         // PHASE 2
         let outcomes = exportAllParallel(jobs: jobs)
 
         // PHASE 3 — all side effects, in exact scan order, fail-fast.
         var firstFailure: Error?
-        loop: for (i, plan) in plans.enumerated() {
+        loop: for plan in plans {
             switch plan.kind {
             case .reject:
                 try trash(plan.jpg)
@@ -184,22 +211,21 @@ public enum Finalize {
             case .export(let jobIndex):
                 if let error = outcomes[jobIndex].error {
                     firstFailure = error
-                    // The failing pair's tmp is already gone (removed by the
-                    // worker's error path); remove the staged exports of
-                    // every unprocessed pair so the dump stays clean.
-                    for later in plans[(i + 1)...] {
-                        if case .export(let j) = later.kind {
-                            try? fm.removeItem(at: stagedPath(for: jobs[j].dst))
-                        }
-                    }
+                    // Function-level defer unlinks all remaining owned stages.
                     break loop
                 }
-                try fm.moveItem(at: stagedPath(for: jobs[jobIndex].dst),
-                                to: jobs[jobIndex].dst)
+                guard let stage = jobs[jobIndex].stage else {
+                    throw ExportOutcomeMissing()
+                }
+                try fm.moveItem(at: stage, to: jobs[jobIndex].dst)
                 dumped += 1
                 cropped += 1
             }
-            try fm.moveItem(at: plan.jpg, to: plan.jpgDst)
+            guard let jpgDst = plan.jpgDst else {
+                throw NSError(domain: "PhotoCullCore.Finalize", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "missing planned archive destination"])
+            }
+            try fm.moveItem(at: plan.jpg, to: jpgDst)
             archived += 1
             if let raw = plan.raw, let rawDst = plan.rawDst {
                 try fm.moveItem(at: raw, to: rawDst)
@@ -210,8 +236,7 @@ public enum Finalize {
             throw firstFailure
         }
 
-        for raw in orphanRAWs {
-            let dst = collisionFreeDestination(for: raw, in: archiveFolder)
+        for (raw, dst) in orphanDestinations {
             try fm.moveItem(at: raw, to: dst)
             archived += 1
         }
@@ -315,6 +340,7 @@ public enum Finalize {
     private struct ExportJob: Sendable {
         let src: URL
         let dst: URL
+        var stage: URL?
         let crop: CropRect?
         let tilt: Double
         let turns: Int
@@ -336,15 +362,9 @@ public enum Finalize {
         let kind: Kind
         let jpg: URL
         let dumpDst: URL?
-        let jpgDst: URL
+        let jpgDst: URL?
         let raw: URL?
         let rawDst: URL?
-    }
-
-    /// Where an export's staged ("<dst>.tmp") file lives until phase 3
-    /// promotes it into place.
-    private static func stagedPath(for dst: URL) -> URL {
-        dst.appendingPathExtension("tmp")
     }
 
     /// Per-export outcome. Boxes the error in a class so results cross task
@@ -358,11 +378,8 @@ public enum Finalize {
     private struct ExportOutcomeMissing: Error {}
 
     /// Run cropped exports `jobs` on a TaskGroup capped at the active core
-    /// count (measured 3.1–3.7× over serial at width 8). Each export is
-    /// written to "<dst>.tmp" and left staged — phase 3 does the ordered
-    /// rename — so a failed encode never leaves a truncated dump file, and a
-    /// failed RUN never leaves dumps for pairs the fail-fast contract keeps
-    /// untouched. Returns one outcome per job, aligned with the input; errors
+    /// count. Each export is written to its private stage file; phase 3 does
+    /// the ordered promotion. Returns one outcome per job, aligned with the input; errors
     /// are reported, never thrown. The group runs on a detached task and the
     /// synchronous caller waits on a semaphore — `run` stays a synchronous
     /// API (AppState and the CLI call it directly).
@@ -378,14 +395,16 @@ public enum Finalize {
                 func add(_ i: Int) {
                     let job = jobs[i]
                     group.addTask {
-                        let tmp = stagedPath(for: job.dst)
+                        guard let stage = job.stage else {
+                            return (i, ExportOutcome(error: ExportOutcomeMissing()))
+                        }
                         do {
-                            try ImagePipeline.export(src: job.src, crop: job.crop, to: tmp,
+                            try ImagePipeline.export(src: job.src, crop: job.crop, to: stage,
                                                      quality: 0.9, tilt: job.tilt,
                                                      quarterTurns: job.turns)
                             return (i, ExportOutcome(error: nil))  // stays staged for phase 3
                         } catch {
-                            try? FileManager.default.removeItem(at: tmp)
+                            unlinkOwnedFile(stage)
                             return (i, ExportOutcome(error: error))
                         }
                     }
@@ -408,8 +427,91 @@ public enum Finalize {
         return box.values
     }
 
-    /// A destination inside `dir` that does not exist yet: `name`, then
-    /// `name_2`, `name_3`, … preserving the original stem/extension case.
+    /// A normalized reservation key; folding only the filename is a
+    /// conservative case-insensitive policy regardless of volume settings.
+    private static func reservationKey(for url: URL) -> String {
+        url.deletingLastPathComponent().standardizedFileURL.path + "/" +
+            url.lastPathComponent.uppercased()
+    }
+
+    /// Inventory each output directory once; directory listings include dangling links.
+    private static func destinationReservations(in dir: URL) throws -> Set<String> {
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        return Set(names.map { reservationKey(for: dir.appendingPathComponent($0)) })
+    }
+
+    private static func destinationExists(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// mkdir is an exclusive ownership claim; only a UUID collision is retried.
+    private static func createOwnedDirectory(_ url: URL) throws -> Bool {
+        let (result, code) = url.withUnsafeFileSystemRepresentation { path -> (Int32, Int32) in
+            guard let path else { return (-1, EINVAL) }
+            let result = Darwin.mkdir(path, mode_t(0o700))
+            return (result, result == 0 ? 0 : errno)
+        }
+        guard result == 0 else {
+            if code == EEXIST { return false }
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(code),
+                          userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return true
+    }
+
+    private static func reserveDestination(for src: URL, in dir: URL,
+                                           reservations: inout Set<String>) -> URL {
+        let ext = src.pathExtension
+        let base = src.lastPathComponent
+        let stem = ext.isEmpty ? base : String(base.dropLast(ext.count + 1))
+        var suffix = 1
+        while true {
+            let name: String
+            if suffix == 1 { name = base }
+            else { name = ext.isEmpty ? "\(stem)_\(suffix)" : "\(stem)_\(suffix).\(ext)" }
+            let candidate = dir.appendingPathComponent(name)
+            let key = reservationKey(for: candidate)
+            if !destinationExists(candidate), !reservations.contains(key) {
+                reservations.insert(key)
+                return candidate
+            }
+            suffix += 1
+        }
+    }
+
+    /// Reserve both members together, applying the same suffix to each stem.
+    private static func reservePair(jpg: URL, raw: URL, in dir: URL,
+                                    reservations: inout Set<String>) -> (jpg: URL, raw: URL) {
+        func named(_ src: URL, suffix: Int) -> URL {
+            let ext = src.pathExtension
+            let base = src.lastPathComponent
+            let stem = ext.isEmpty ? base : String(base.dropLast(ext.count + 1))
+            let name = suffix == 1 ? base : (ext.isEmpty ? "\(stem)_\(suffix)" : "\(stem)_\(suffix).\(ext)")
+            return dir.appendingPathComponent(name)
+        }
+        var suffix = 1
+        while true {
+            let jpgDst = named(jpg, suffix: suffix)
+            let rawDst = named(raw, suffix: suffix)
+            let jpgKey = reservationKey(for: jpgDst)
+            let rawKey = reservationKey(for: rawDst)
+            if !destinationExists(jpgDst), !destinationExists(rawDst),
+               !reservations.contains(jpgKey), !reservations.contains(rawKey) {
+                reservations.insert(jpgKey)
+                reservations.insert(rawKey)
+                return (jpgDst, rawDst)
+            }
+            suffix += 1
+        }
+    }
+
+    private static func unlinkOwnedFile(_ url: URL) {
+        url.withUnsafeFileSystemRepresentation { path in
+            if let path { _ = Darwin.unlink(path) }
+        }
+    }
+
+    /// Legacy non-reserving probe retained for package callers and focused checks.
     static func collisionFreeDestination(for src: URL, in dir: URL) -> URL {
         let fm = FileManager.default
         let base = src.lastPathComponent
