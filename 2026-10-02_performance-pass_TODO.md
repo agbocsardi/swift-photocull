@@ -12,7 +12,7 @@ Branch: `performance`. Audit report: `docs/performance-audit.md`.
 - [x] **Live feel test (round 2): j/k snappiness, session open, pan/zoom, finalize speed — fresh dist/PhotoCull.app built 21:48** — user: "performance is great!"
 - [x] Live crop/tilt feel test (round 1, confirmed in cont. 3 log)
 - [x] CanvasState extraction — landed in wave 3 (perf2-app, commit 4ac83ed)
-- [ ] Feature: sidebar step-opens-session — evaluate step-opens-impl report, merge, verify, rebuild dist
+- [x] Feature: sidebar step-opens-session — evaluated, merged (2a96314→merge), 415/415, snapshot OK, dist rebuilt. Worktree wJ kept until user tries it
 
 ## Log
 
@@ -199,3 +199,11 @@ Branch: `performance`. Audit report: `docs/performance-audit.md`.
 - Dispatched **step-opens-impl** (glm-5.3-flash, wJ:p1, branch `feature/step-opens-session`):
   open target in moveCursor when `!= activeDate`, keep Enter/Tab/click semantics unchanged,
   README keyboard-table update, WHY comment. DoD: build + 415/415, AppState.swift + README only.
+
+### 2026-10-03 (cont.) — step-opens evaluated, merged, shipped
+
+- b71efdb reviewed: both moveCursor branches open on `!= activeDate`, Enter/Tab/click untouched,
+  README rows tight, WHY comments real. 10 lines of logic — minimal diff, exactly to spec.
+- Parent verification: build + 415/415 in worktree, merged --no-ff onto `performance`, 415/415
+  on merged, snapshot renders, dist/PhotoCull.app rebuilt.
+- Worktree wJ kept until user confirms the feel; branch `feature/step-opens-session` in git.
