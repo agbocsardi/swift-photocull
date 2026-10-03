@@ -1,5 +1,106 @@
 import Foundation
 import Darwin
+
+#if FINALIZE_DESCRIPTOR_CHECKS
+// Compile this branch WITH the actual Session.swift/FinalizeSafety.swift, not the library.
+// Forward native syscalls; reuse each closed FD immediately so a second close is observable.
+private var observingCloses = false
+private var closeCounts: [Int32: Int] = [:]
+private var markerPath = ""
+private var failCall = ""
+private var statCountdown = 0
+private var injected = false
+private var descriptorChecks = 0
+
+@discardableResult
+func close(_ fd: Int32) -> Int32 {
+    let result = Darwin.close(fd)
+    if observingCloses {
+        closeCounts[fd, default: 0] += 1
+        if closeCounts[fd] == 1 {
+            precondition(Darwin.open(markerPath, O_RDONLY | O_CLOEXEC) == fd,
+                         "must immediately reuse the closed descriptor")
+        }
+    }
+    return result
+}
+func fsync(_ fd: Int32) -> Int32 {
+    if failCall == "fsync" {
+        failCall = ""; injected = true; errno = EIO; return -1
+    }
+    return Darwin.fsync(fd)
+}
+func pwrite(_ fd: Int32, _ bytes: UnsafeRawPointer?, _ count: Int, _ offset: off_t) -> Int {
+    if failCall == "pwrite" {
+        failCall = ""; injected = true; errno = ENOSPC; return -1
+    }
+    return Darwin.pwrite(fd, bytes, count, offset)
+}
+func fstat(_ fd: Int32, _ value: UnsafeMutablePointer<stat>!) -> Int32 {
+    if statCountdown > 0 {
+        statCountdown -= 1
+        if statCountdown == 0 { injected = true; errno = EIO; return -1 }
+    }
+    return Darwin.fstat(fd, value)
+}
+private func fdExpect(_ value: Bool, _ message: String) {
+    descriptorChecks += 1
+    precondition(value, message)
+}
+private func checkFailedInit(_ label: String, count: Int, injection: Bool = false,
+                             _ body: () throws -> Void) {
+    closeCounts = [:]; injected = false; observingCloses = true
+    do { try body(); fatalError("\(label) must fail") }
+    catch { print("Expected \(label): \(error.localizedDescription)") }
+    observingCloses = false
+    fdExpect(closeCounts.count == count, "\(label): every acquired FD closed")
+    if injection { fdExpect(injected, "\(label): syscall injection fired") }
+    for (fd, closes) in closeCounts {
+        fdExpect(closes == 1, "\(label): exactly one close per acquired FD")
+        var bytes = [UInt8](repeating: 0, count: 3)
+        fdExpect(Darwin.read(fd, &bytes, bytes.count) == 3 && bytes == [4, 5, 6],
+                 "\(label): unrelated reused descriptor remains readable")
+        precondition(Darwin.close(fd) == 0)
+    }
+}
+@main struct FinalizeDescriptorChecks {
+    static func main() throws {
+        guard let path = ProcessInfo.processInfo.environment["PC_FINALIZE_TEST_OUT"], path.hasPrefix("/") else {
+            fatalError("Explicit absolute PC_FINALIZE_TEST_OUT required")
+        }
+        let root = URL(fileURLWithPath: path).appendingPathComponent("synthetic/descriptors-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        markerPath = root.appendingPathComponent("marker").path
+        try Data([4, 5, 6]).write(to: URL(fileURLWithPath: markerPath))
+        let owner = try FinalizeDirectory(root, lock: true)
+        withExtendedLifetime(owner) {
+            checkFailedInit("flock contention", count: 1) { _ = try FinalizeDirectory(root, lock: true) }
+            statCountdown = 1
+            checkFailedInit("directory pre-initialization fstat", count: 1, injection: true) {
+                _ = try FinalizeDirectory(root)
+            }
+        }
+        owner.releaseLock()
+        for scenario in ["journal-open", "journal-stat", "record-open", "record-stat", "pwrite", "fsync", "durable-stat"] {
+            let url = root.appendingPathComponent(scenario)
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+            let input = try FinalizeDirectory(url), claims = try input.privateDirectory("claims-")
+            if scenario == "journal-open" { try Data([7]).write(to: claims.url.appendingPathComponent(".progress.jsonl")) }
+            if scenario == "record-open" { try Data([8]).write(to: url.appendingPathComponent(FinalizeRecovery.name)) }
+            failCall = scenario
+            statCountdown = ["journal-stat": 1, "record-stat": 2, "durable-stat": 3][scenario] ?? 0
+            let count = scenario == "journal-open" ? 0 : (["journal-stat", "record-open"].contains(scenario) ? 1 : 2)
+            withExtendedLifetime((input, claims)) {
+                checkFailedInit(scenario, count: count, injection: !scenario.hasSuffix("-open")) {
+                    _ = try FinalizeRecovery(directory: input, claims: claims, invocation: scenario, plans: [])
+                }
+            }
+            failCall = ""; statCountdown = 0
+        }
+        print("FinalizeDescriptorChecks: \(descriptorChecks) checks passed; artifacts: \(root.path)")
+    }
+}
+#else
 import CoreGraphics
 import PhotoCullCore
 
@@ -238,6 +339,73 @@ func suiteFinalizeFailureChecks() throws {
         else { bytes(f.dump.appendingPathComponent("A.JPG"), outsider, "external destination marker preserved") }
         bytes(try claims(f).appendingPathComponent("A.JPG"), original, "copy race original remains owned")
         try noStages(f); try retryBlocked(f)
+    }
+
+    // Inject EXDEV inside the native move's catchable block; execute the REAL archive fallback.
+    // No mounts: this proves error-path sequencing, not physical cross-volume behavior.
+    for scenario in ["success", "copy", "promotion-file", "promotion-link", "unlink"] {
+        let f = try setup(), original = Data([181, 182, 183]), stranger = Data([191, 192])
+        let src = f.input.appendingPathComponent("A.JPG"), dst = f.archive.appendingPathComponent("A.JPG")
+        try original.write(to: src)
+        let identity = FileToken.read(src), metadata = try sidecar(f)
+        var forced = 0, copies = 0, promotions = 0, unlinks = 0
+        var stageCopy: URL?, owned: URL?
+        let hooks = FinalizeHooks(boundary: { event, url in
+            if event == "claimed" { owned = url.appendingPathComponent("A.JPG") }
+            if event == "archiveMove" {
+                forced += 1
+                expect(forced == 1 && url == dst, "EXDEV injected once at actual archive move")
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(EXDEV))
+            }
+            if event == "copy" {
+                copies += 1; stageCopy = url
+                expect(url.path.hasPrefix(f.archive.path + "/.photocull-stage-"), "fallback copy stage on archive destination")
+                if scenario == "copy" { try stranger.write(to: url) } // Real Foundation copy collision.
+            }
+            if event == "copyPromotion" {
+                promotions += 1
+                bytes(stageCopy!, original, "fallback actually copied original before promotion")
+                expect(FileToken.read(stageCopy!) != identity, "fallback copy has distinct inode")
+                bytes(owned!, original, "source still owned before promotion")
+                if scenario == "promotion-file" { try stranger.write(to: url) }
+                if scenario == "promotion-link" { try fm.createSymbolicLink(atPath: url.path, withDestinationPath: "missing") }
+            }
+            if event == "archiveUnlink" {
+                unlinks += 1
+                bytes(dst, original, "archive promoted before owned source unlink")
+                bytes(url, original, "owned source still intact at unlink boundary")
+                if scenario == "unlink" { precondition(chmod(url.deletingLastPathComponent().path, 0o500) == 0) }
+            }
+        }, trash: { _ in fatalError("EXDEV archive must not reach Trash") })
+        defer { if let owned { _ = chmod(owned.deletingLastPathComponent().path, 0o700) } }
+        if scenario == "success" {
+            let result = try run(f, dump: false, hooks: hooks)
+            expect(result.archived == 1, "EXDEV success counted")
+            bytes(dst, original, "EXDEV archive bytes exact")
+            expect(FileToken.read(dst) != identity, "EXDEV final output distinct inode")
+            expect(!fm.fileExists(atPath: owned!.path) && !fm.fileExists(atPath: src.path), "EXDEV success removes owned source")
+            expect((try fm.contentsOfDirectory(atPath: f.input.path)) == [Session.fileName], "EXDEV success removes claims and record only")
+        } else {
+            let error = failure { _ = try run(f, dump: false, hooks: hooks) }
+            if scenario == "unlink" { precondition(chmod(owned!.deletingLastPathComponent().path, 0o700) == 0) }
+            bytes(try claims(f).appendingPathComponent("A.JPG"), original, "EXDEV failure retains claimed source")
+            expect(FileToken.read(owned!) == identity, "EXDEV failure retains original inode")
+            expect(error.localizedDescription.contains(owned!.deletingLastPathComponent().path), "EXDEV error identifies manual recovery claims")
+            expect(fm.fileExists(atPath: f.input.appendingPathComponent(".photocull-recovery.json").path), "EXDEV failure retains recovery record")
+            if scenario == "promotion-file" { bytes(dst, stranger, "EXDEV promotion never overwrites outsider") }
+            else if scenario == "promotion-link" {
+                expect((try? fm.destinationOfSymbolicLink(atPath: dst.path)) == "missing", "EXDEV promotion preserves dangling link")
+            } else if scenario == "unlink" {
+                bytes(dst, original, "EXDEV unlink failure preserves promoted prefix")
+                expect(FileToken.read(dst) != identity, "EXDEV unlink failure prefix is copied inode")
+            } else { expect(!fm.fileExists(atPath: dst.path), "EXDEV failed copy never promoted") }
+            try retryBlocked(f)
+        }
+        expect(forced == 1 && copies == 1, "EXDEV catch entered actual fallback once")
+        expect(promotions == (scenario == "copy" ? 0 : 1), "EXDEV actual Foundation copy success/failure observed")
+        expect(unlinks == (["success", "unlink"].contains(scenario) ? 1 : 0), "EXDEV unlink only after successful exclusive promotion")
+        bytes(f.input.appendingPathComponent(Session.fileName), metadata, "EXDEV preserves sidecar")
+        try noStages(f)
     }
 
     // JPG and orphan replacement after planning is claimed, rejected, restored, never acted on under old decisions.
@@ -547,3 +715,4 @@ func suiteFinalizeFailureChecks() throws {
     }
     print("FinalizeFailureChecks: \(checks) checks passed; artifacts: \(root.path)")
 }
+#endif

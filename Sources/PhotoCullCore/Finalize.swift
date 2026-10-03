@@ -308,11 +308,14 @@ public enum Finalize {
                                        claims: FinalizeDirectory, input: FinalizeDirectory,
                                        expected: FinalizeIdentity, hooks: FinalizeHooks) throws {
         try verifyOwned(src, claims: claims, input: input, expected: expected); try output.verifyVisible()
-        do { try claims.move(src.lastPathComponent, to: output, name: destination.lastPathComponent) }
-        catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(EXDEV) {
+        do {
+            try hooks.boundary?("archiveMove", destination)
+            try claims.move(src.lastPathComponent, to: output, name: destination.lastPathComponent)
+        } catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(EXDEV) {
             // Cross-volume archive: promote a private destination-volume copy before unlinking ownership.
             try copyClaimed(src, to: output, destination: destination, claims: claims, input: input,
                             expected: expected, hooks: hooks)
+            try hooks.boundary?("archiveUnlink", claims.url.appendingPathComponent(src.lastPathComponent))
             try verifyOwned(src, claims: claims, input: input, expected: expected)
             try claims.unlink(src.lastPathComponent)
         }

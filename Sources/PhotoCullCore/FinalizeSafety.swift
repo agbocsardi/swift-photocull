@@ -47,7 +47,7 @@ final class FinalizeDirectory {
         if lock {
             guard directoryFlock(fd, LOCK_EX | LOCK_NB) == 0 else {
                 let code = errno
-                close(fd)
+                // All properties are initialized: deinit alone owns fd on this throw.
                 if code == EWOULDBLOCK { throw FinalizeSafetyError("Another Finalize owns \(url.path)") }
                 throw finalizePOSIX("Cannot lock session; refusing Finalize \(url.path)", code: code)
             }
@@ -173,11 +173,10 @@ final class FinalizeRecovery {
         var st = stat()
         guard fstat(fd, &st) == 0 else { close(fd); close(progressFD); throw finalizePOSIX("stat recovery record") }
         identity = FinalizeIdentity(st)
-        do {
-            try writeDocument()
-            guard fstat(fd, &st) == 0 else { throw finalizePOSIX("stat durable recovery record") }
-            identity = FinalizeIdentity(st)
-        } catch { close(fd); close(progressFD); throw error }
+        // From here self is fully initialized; deinit alone closes both descriptors on error.
+        try writeDocument()
+        guard fstat(fd, &st) == 0 else { throw finalizePOSIX("stat durable recovery record") }
+        identity = FinalizeIdentity(st)
     }
     deinit { close(fd); close(progressFD) }
     private func writeDocument() throws {
