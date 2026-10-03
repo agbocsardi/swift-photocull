@@ -15,7 +15,7 @@ Parent specifies fixes; openai-codex/gpt-6-luna, high reasoning, implements boun
 - [x] Review Finalize patch: reserved pair-consistent names, one-time inventory, exclusive owned stages/all-exit cleanup; merged 6cdf6a6 after fresh 35+58 checks.
 - [x] Review test-reliability patch: locked collectors, explicit fail-closed suite filter, synthetic concurrent regression; merged da7dea8 after fresh 101 focused checks.
 - [x] Integrate all five approved patches sequentially; rerun focused synthetic app/Core checks and preservation regression on combined source.
-- [ ] Complete follow-up operation ownership/progress/diagnostic gates before clearing Finalize.
+- [ ] Complete follow-up operation ownership/progress/diagnostic gates before clearing Finalize; user-approved remaining safety worker dispatched, see 2026-10-03_finalize-safety_TODO.md.
 - [ ] Add/request native end-to-end metering after caller contracts stabilize; never fabricate paint timings.
 - [x] Build and strictly verify an isolated release bundle after integration checks; do not replace or launch installed/running app.
 - [ ] User-approved install/live navigation/editing/scroll/placeholder feel test; Finalize remains not cleared.
