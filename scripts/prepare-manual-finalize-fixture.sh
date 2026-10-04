@@ -13,7 +13,7 @@ export SWIFTPM_MODULECACHE_OVERRIDE="$OUT/tool/module-cache" XDG_CACHE_HOME="$OU
 CORE=(Config Session FilePair Library Exif ImagePipeline FinalizeSafety Finalize)
 for name in "${CORE[@]}"; do cp "$REPO/Sources/PhotoCullCore/$name.swift" "$OUT/tool/sources/"; done
 # Keep the exact inspected startup/CLI/ingest evidence alongside the compiled subset.
-for name in PhotoCullApp AppState HeadlessCheck Snapshot Overlays ContentView MenuBarView; do
+for name in PhotoCullApp AppState HeadlessCheck Snapshot Overlays ContentView MenuBarView StartupConfiguration; do
   cp "$REPO/Sources/PhotoCullApp/$name.swift" "$OUT/tool/sources/"
 done
 cp "$REPO/Sources/PhotoCullCore/"{Ingest,PairRepair}.swift "$OUT/tool/sources/"
