@@ -93,6 +93,8 @@ final class AppState: ObservableObject {
 
     // MARK: Config + library
 
+    /// Fixture startup has already validated an explicit config and disposable bundle identity.
+    let fixtureMode: Bool
     @Published private(set) var cfg: PCConfig
     @Published var sessions: [SessionRow] = []
 
@@ -193,19 +195,25 @@ final class AppState: ObservableObject {
     private static let appearanceKey = "PhotoCull.appearance"
 
     private func applyAppearance() {
-        if appearance == .system {
-            UserDefaults.standard.removeObject(forKey: Self.appearanceKey)
-        } else {
-            UserDefaults.standard.set(appearance.rawValue, forKey: Self.appearanceKey)
+        // Fixture appearance is transient; SwiftUI/AppKit state uses its unique bundle domain.
+        if !fixtureMode {
+            if appearance == .system {
+                UserDefaults.standard.removeObject(forKey: Self.appearanceKey)
+            } else {
+                UserDefaults.standard.set(appearance.rawValue, forKey: Self.appearanceKey)
+            }
         }
         NSApplication.shared.appearance = appearance.nsAppearance
     }
 
     init(cfg: PCConfig? = nil, initializeAppearance: Bool = true,
-         openInitialSession: Bool = true, operationHooks: OperationHooks? = nil) {
+         openInitialSession: Bool = true, operationHooks: OperationHooks? = nil,
+         fixtureMode: Bool = false) {
+        precondition(!fixtureMode || cfg != nil, "Fixture AppState requires explicit validated config")
+        self.fixtureMode = fixtureMode
         self.operationHooks = operationHooks
         self.cfg = cfg ?? PCConfig.load()
-        if initializeAppearance {
+        if initializeAppearance && !fixtureMode {
             let saved = UserDefaults.standard.string(forKey: Self.appearanceKey) ?? "system"
             appearance = AppAppearance(rawValue: saved) ?? .system
             applyAppearance()
@@ -688,7 +696,7 @@ final class AppState: ObservableObject {
     // MARK: - External preview
 
     func openInPreview() {
-        guard bulkOperation == nil else { return }
+        guard permitsOrdinaryIO(), bulkOperation == nil else { return }
         guard let url = currentPair?.jpg else { return }
         let preview = URL(fileURLWithPath: "/System/Applications/Preview.app")
         if FileManager.default.fileExists(atPath: preview.path) {
@@ -700,7 +708,7 @@ final class AppState: ObservableObject {
     }
 
     func revealInFinder() {
-        guard bulkOperation == nil else { return }
+        guard permitsOrdinaryIO(), bulkOperation == nil else { return }
         guard let url = currentPair?.jpg else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
@@ -834,8 +842,14 @@ final class AppState: ObservableObject {
 
     // MARK: - Ingest
 
+    /// Shared entry guard, before even sidecar flush, card detection or external app access.
+    private func permitsOrdinaryIO() -> Bool {
+        guard !fixtureMode else { toastMessage("Unavailable in disposable fixture mode"); return false }
+        return true
+    }
+
     func beginIngest() {
-        guard canStartBulk(), modal == nil, flushPersist() else { return }
+        guard permitsOrdinaryIO(), canStartBulk(), modal == nil, flushPersist() else { return }
         detectedCards = Ingest.detectSDCards()
         if ingestSource.isEmpty, let first = detectedCards.first { ingestSource = first.path }
         ingestProgress = IngestProgress()
@@ -843,7 +857,7 @@ final class AppState: ObservableObject {
     }
 
     func startIngest() {
-        guard canStartBulk(), modal == nil || modal == .ingest, flushPersist() else { return }
+        guard permitsOrdinaryIO(), canStartBulk(), modal == nil || modal == .ingest, flushPersist() else { return }
         let token = UUID(), cfg = cfg, hooks = operationHooks
         let source = ingestSource.trimmingCharacters(in: .whitespacesAndNewlines)
         bulkOperation = .ingest(token)
@@ -899,7 +913,7 @@ final class AppState: ObservableObject {
     func repairPairingInteractive() { planPairRepair(interactive: true) }
 
     private func planPairRepair(interactive: Bool) {
-        guard canStartBulk(), modal == nil, flushPersist() else { return }
+        guard permitsOrdinaryIO(), canStartBulk(), modal == nil, flushPersist() else { return }
         let token = UUID(), cfg = cfg, hooks = operationHooks
         bulkOperation = .repair(token)
         Task {
@@ -934,7 +948,7 @@ final class AppState: ObservableObject {
     }
 
     func applyPairRepair() {
-        guard canStartBulk(), modal == nil, flushPersist() else { return }
+        guard permitsOrdinaryIO(), canStartBulk(), modal == nil, flushPersist() else { return }
         let token = UUID()
         bulkOperation = .repair(token)
         executePairRepair(token: token, cfg: cfg)

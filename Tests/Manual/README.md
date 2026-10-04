@@ -1,22 +1,30 @@
-# Disposable GUI / Finalize fixture (preparation only)
+# Disposable GUI / Finalize fixture
 
-**STOP: the reviewed app has no supported independent startup config. No safe
-launch command is available. Do not launch it, even with HOME/PC_FIXTURES set.**
-This checklist is a deferred manual test, not authorization to launch or Trash.
-The parent must independently review the fixture and isolation changes, then
-obtain explicit user authorization for GUI and native Trash actions.
+**Preparation is NOT launch permission. Parent independently reviews the source,
+checks and candidate before any user-authorized GUI/native Trash test. Never
+launch the ordinary dist app for this workflow, or replace its saved config.**
 
-## Prepare / validate (no PhotoCull launch)
+## Preparation and checks (no app launch)
 
-From the checkout, run `scripts/prepare-manual-finalize-fixture.sh` with no arguments.
-It always allocates a new canonical `/private/tmp/photocull-manual-fixture-*` root,
-mode 0700. It uses only installed Swift/macOS APIs, snapshots the actual relevant
-production sources, and compiles a small generator/validator directly with
-`swiftc`. All build, module, Clang, temporary, config/security/cache directories,
-logs, inputs, proposed TOML, pure image-export probe, and manifest stay in that
-root. No SwiftPM build, dependency install, shared `.build`, or `dist` edit.
+- `scripts/prepare-manual-finalize-fixture.sh`: generate only six JPEGs, proposed
+  TOML, manifest, pure image-export probe, checker and this checklist in a fresh
+  canonical `/private/tmp/photocull-manual-fixture-*` root. No app bundle/release build.
+- `scripts/check-fixture-startup.sh`: full isolated release compile, focused native
+  startup/ownership/I/O guard checks with effective negative controls, existing
+  focused operation/navigation regressions, and an ad-hoc signed **separate**
+  `PhotoCullFixture.app`. Build/check products live in fresh canonical
+  `/private/tmp/photocull-manual-launch-*` roots. It generates another fresh launch
+  fixture as the eventual writable GUI target, never the read-only shared inputs.
+  Candidate/fixture paths, unique bundle ID, hash, signature log and proposed
+  launch command are recorded in its output. The script never executes PhotoCull.
 
-Let ROOT be the exact printed canonical root. Non-destructive validation:
+No installs, dependencies, framework additions, shared `.build`, dist replacement,
+ordinary diagnostics, cards, native Trash or GUI actions. Native macOS APIs only.
+Every compiler/SwiftPM/Clang cache/config/security/temp output is isolated. Existing
+shared preparation roots are hashed read-only before/after and never modified.
+Do not use `scripts/build-app.sh` here (it writes shared build/dist outputs).
+
+Given ROOT = printed **data fixture** root, read-only validation:
 
 ```sh
 "$ROOT/tool/fixture" validate "$ROOT"
@@ -24,35 +32,87 @@ Let ROOT be the exact printed canonical root. Non-destructive validation:
 "$ROOT/tool/fixture" validate-finalized "$ROOT"
 ```
 
-Validation never launches the app, invokes Finalize.run, calls card detection,
-reads the real saved config, writes config/sidecars, or inspects system Trash.
-It rejects noncanonical roots, all descendant symlinks/special files and wrong
-managed file sets, checks hashes and actual ImageIO decode, and uses actual
-production `PCConfig.load(from:)`, Library, FilePairs, ExifReader, ImagePipeline
-and read-only `Finalize.summary`. The pure generator crop probe exercises the
-real export pipeline on generated #03, with a square crop and +2° tilt.
-Initial validation deliberately fails once GUI changes have created a sidecar.
-No automated cleanup is supplied; keep the external root until review is done.
+Validation rejects noncanonical roots/symlinks/special files, verifies exact config
+and managed file sets, hashes, native JPEG decode/thumbnail/dates and actual
+production strict fixture Config/Library/FilePairs/read-only Finalize.summary.
+The generator exercises pure ImagePipeline.export on generated #03 only; it
+never calls Finalize.run/Trash. Initial validation fails once GUI creates a sidecar.
+No automated cleanup, Trash emptying or removal/restore instructions are provided.
 
-## Layout / intentions
+## Supported fixture startup — only after parent review and GUI permission
 
-- `config/config.toml`: **proposed only, not selectable by current GUI startup**.
-  Absolute inbox/archive/dump paths are ROOT/inbox, ROOT/archive, ROOT/export.
-  Standard JPG/JPEG and RAF/RW2 extension lists; no RAW files are generated.
-- `inbox/2024-05-03/`: exactly six valid 960×640 JPEGs, capture date embedded in
-  EXIF, numbered colored grids, horizontal reference line, asymmetric corner
-  features, and filenames matching the intentions below.
-- `archive/`, `export/`: separate, empty roots; no collision suffixes expected.
-- Session `notes.txt` and `unrelated-subfolder/marker.txt`: unrelated preserved
-  entries. No `.photocull.json` seeded; all six start undecided.
-- `checks/crop-probe.JPG`: 640×640 generated output, NOT a library input.
-- `manifest.json`: exact input SHA256/bytes/dimensions, desired decisions,
-  paths, expected counts and file outcomes. Tool/source snapshots and provenance
-  are under `tool/`; the root survives worktree removal.
-- No mock card is needed: config has no card-source setting and this test starts
-  directly from a generated inbox. **Do not open Ingest** (it scans real mounts).
+The **dedicated** startup option is exactly:
 
-| JPEG | Manual action | Archive | Export with crop applied | Native Trash |
+`PhotoCullFixture.app/Contents/MacOS/PhotoCull --fixture-config <absolute-canonical-config>`
+
+Use the EXACT absolute candidate/config paths from `proposed-launch.txt`, after
+parent review. Do not execute this documentation placeholder or an ordinary app.
+Direct executable launch avoids Finder/LaunchServices-added command-line flags.
+The option is accepted only when Bundle.main identifies a separately prepared
+`local.photocull.fixture.<UUID>` bundle, distinct from `local.photocull.swift`.
+A fixture-identified bundle without the option, the ordinary app with the option,
+unbundled use, invalid identity, missing/duplicate option, or ANY additional
+flags (including --check/--repair-pairs/--apply/--snapshot/--crop/--appearance)
+exits 2 before default config, headless dispatch, AppState or SwiftUI startup.
+Double-clicking this fixture app fails closed; no HOME/PC_FIXTURES override.
+
+Strict `PCConfig.loadFixture(from:)` never uses the ordinary permissive loader or
+writes defaults. It requires:
+
+- Existing absolute canonical ROOT/config/config.toml; ROOT directly under
+  `/private/tmp`, named `photocull-manual-fixture-*` or `photocull-manual-launch-*`.
+- Owned readable regular non-symlink, non-hardlinked config, owned real root/config
+  directories; root must be private (no group/other permissions). Native pinned
+  read, UTF-8, size ≤16 KiB, replacement/change refusal.
+- **Exactly generated TOML serialization**: all three explicit absolute paths and
+  extension lists; paths ROOT/inbox, ROOT/archive, ROOT/export; arrays RAF/RW2 and
+  JPG/JPEG in generated order. Comments, duplicates, unknown keys, alternative
+  whitespace/formatting, incomplete/malformed config all fail closed.
+- All three existing separate owned real data directories; every descendant is
+  owned, readable regular (not hardlinked) or a real directory. No symlink,
+  special-file or path escape. File permissions are not bypassed.
+
+This generated-only TOML ceiling is intentional: no new TOML/config framework.
+The fixture is a controlled generated tree, **not an OS filesystem sandbox**.
+Startup validation is not continuous confinement against an owner/malicious
+process replacing directories or planting links later. Keep the roots private,
+use only the generated files, and do not externally mutate them during GUI work.
+
+## Preference / I/O isolation boundaries
+
+Fixture AppState skips its explicit UserDefaults.standard appearance read/write;
+appearance is transient. SwiftUI/AppKit automatic window/state preferences use
+the fresh bundle identifier. **OS-created preferences/saved state for that unique
+identifier may live outside ROOT** (e.g. user Library paths). They are disposable
+application-domain state, not the ordinary PhotoCull preference domain. We never
+read, edit/delete or back up ordinary preferences, and never use global preference
+settings or HOME overrides. This is domain isolation, not proof that macOS internals
+never read system-wide UI settings. GUI/framework persistence has not been live-tested.
+
+Shared AppState entry methods refuse Ingest/startIngest, pairing check/repair/apply,
+Preview and Finder BEFORE any flush, volume discovery or external-app/audit I/O.
+The ordinary menu-bar extra (with a direct Finder action) is not inserted in fixture
+mode. Snapshot callbacks are also suppressed; mixed snapshot/diagnostic CLI flags
+are rejected before startup. Normal startup/flags/preferences remain unchanged.
+Use only local navigation, decisions, crop/tilt, confirmation/cancel and quit.
+
+Native macOS Trash is **not** redirected or mocked by production fixture mode.
+It remains a real OS side effect requiring separate explicit authorization.
+Preparation/checks never call it. A unique bundle identity does not sandbox Trash.
+
+## Layout / intended manual outcomes
+
+ROOT/config/config.toml routes inbox/archive/dump to ROOT/inbox, ROOT/archive and
+ROOT/export. Six genuine 960×640 JPEGs in inbox/2024-05-03 have stable EXIF capture
+dates, colored numbered grids/reference lines/asymmetric corners. No RAW/card
+inputs or seeded `.photocull.json`; all six initially undecided. Archive/export
+start empty. Unrelated notes.txt and unrelated-subfolder/marker.txt must survive.
+checks/crop-probe.JPG is a 640×640 generated output, NOT a seventh inbox input.
+manifest.json supplies full original SHA256/bytes/dimensions and file intentions;
+launch_cleared stays false even when a candidate is prepared. External fixture
+roots survive worktree cleanup; preserve them for review.
+
+| JPEG | Manual action | Archive | Crop-applied export | Native Trash |
 |---|---|---|---|---|
 | 01_RED_KEEP.JPG | Keep; no edits | original 960×640/hash | identical 960×640/hash | no |
 | 02_GREEN_KEEP.JPG | Keep; no edits | original 960×640/hash | identical 960×640/hash | no |
@@ -62,99 +122,48 @@ No automated cleanup is supplied; keep the external root until review is done.
 | 06_CYAN_UNDECIDED.JPG | Leave undecided | original 960×640/hash | identical 960×640/hash | no |
 
 Successful destinations: ROOT/archive/2024-05-03 and ROOT/export/2024-05-03.
-Undecided is **treated as keep**, not left in the inbox. Counts: 3 keep, 2 reject,
-1 undecided, 6 total, 0 RAW; Finalize: 4 archived, 2 trashed, 4 exported, 1 edited.
-Native macOS Trash is intentionally NOT redirected into ROOT by config. The OS
-chooses its real destination (possibly with collision renaming); Trash may fail.
-No fixture preparation or validation tests that API or empties/removes Trash.
+Undecided is treated as keep, not left in the inbox. Summary: 3 keep, 2 reject,
+1 undecided, 6 total, 0 RAW. Finalize: 4 archived, 2 trashed, 4 exported, 1 edited.
+OS chooses Trash location/name, potentially collision-renamed; native Trash can
+fail. Root-local output validation never proves Trash presence or recoverability.
 
-## Deferred manual checklist — BLOCKED until independent isolation review
+## Deferred manual checklist — not launch-cleared by preparation
 
-- [ ] Parent reviews source/bundle provenance, config containment and read-only
-  validation; approves an independent-config mechanism before any launch.
-- [ ] User separately authorizes app launch/GUI and then actual macOS Trash.
-  Config isolation does NOT isolate native Trash. No real volumes/cards/photos.
-- [ ] Before launch, all managed roots match the printed canonical ROOT, no
-  symlinks, archive/export empty. Safe launch command comes from parent review,
-  not this checklist. No real config replacement/backup-and-restore workaround.
-- [ ] At initial UI, only 2024-05-03 appears: six undecided photos, no RAW badges.
-  Inspect six distinct numbers/colors; use filmstrip and left/right arrows to
-  navigate. `j/k` navigate photos only when photo/filmstrip focus, not sidebar.
-- [ ] On #03 try a crop/tilt draft then Esc; confirm draft is not saved. Reenter
-  with `c`/Crop, select 1:1 (do not resize/move it), use period eight times to set
-  +2° tilt from zero, then Enter/Apply. Check square preview/reference-line tilt.
-  If testing Undo/Redo, ensure final saved state is again 1:1/+2°. No rotation.
-- [ ] Set Keep on #01/#02/#03, Reject on #04/#05, leave #06 undecided. `z` and `x`
-  mark and auto-advance; pressing the same decision again clears it. Recheck
-  filenames before marking; navigation alone persists last_index in sidecar.
-- [ ] Use Cull → Finalize Current Session (⌘F), not Ingest or repair. Wait for
-  summary: Keep 3 / Reject 2 / Undecided 1 / Total 6; undecided-as-keep warning;
-  copies path ROOT/export. Choose **Keep JPGs with the crop applied**. First
-  Cancel; verify no moves/Trash and archived/export folders remain empty.
-- [ ] Reopen summary and recheck it. Only with separate actual Trash permission,
-  confirm Finalize once. Do not expect undo to restore originals after Finalize;
-  app clears affected undo/session references. Do not quit while bulk work runs.
-- [ ] Inspect four archives and four exports; originals' hashes match manifest,
-  #03 export is 640×640 edited; #01/#02/#06 exports are byte-identical. Run
-  `validate-finalized` for these root-local outcomes (it never inspects Trash).
-- [ ] Session date folder remains with sidecar/notes/nested marker unchanged;
-  an empty-photo session row can remain. Do not expect recursive deletion.
-  Success toast reports 4 archived / 2 trashed and retained folder path.
-- [ ] User manually inspects ONLY the two generated reject items in macOS Trash;
-  compare original bytes/hashes if authorized. Do not empty Trash, automatically
-  restore/remove items, or inspect unrelated Trash items. Absence from inbox is
-  not proof of recoverability. This step is unperformed by the fixture agent.
-- [ ] On any failure/recovery record/claim folder, STOP. Preserve ROOT and partial
-  archive/export/claims; report paths. No blind retry or automatic cleanup.
+- [ ] Parent reviews source/commit, native test logs, source/bundle provenance,
+  unique disposable identifier, strict signature/hash and config containment;
+  independently reruns checks. Candidate is never installed over dist/ordinary app.
+- [ ] User separately authorizes that exact candidate GUI launch. Only then use
+  proposed-launch.txt's absolute direct executable/config command. No extra flags,
+  real config/library/photos/cards/mounts or modifications to shared input roots.
+- [ ] Before launch, data fixture passes initial validation; archive/export empty,
+  no sidecar/symlinks. No other process mutates the roots during the manual test.
+- [ ] Only 2024-05-03 appears: six undecided numbered/color-distinct photos, no RAW.
+  Filmstrip/left-right navigate photos; j/k navigate photos only with photo/filmstrip
+  focus, not sidebar. Ingest/repair/Preview/Finder refuse with a fixture toast;
+  do not use these excluded actions as part of normal manual acceptance.
+- [ ] On #03 try a crop/tilt draft then Esc; confirm draft isn't saved. Reenter
+  with c/Crop; select 1:1, do not move/resize; period eight times sets +2° from zero;
+  Enter/Apply. Check square preview and tilted reference line. If Undo/Redo tested,
+  final saved state remains 1:1/+2°, no rotation.
+- [ ] Keep #01/#02/#03, Reject #04/#05, leave #06 undecided. z/x mark and auto-
+  advance; pressing same decision again clears it. Check filename before marking.
+- [ ] Cull → Finalize Current Session (⌘F); wait for Keep 3 / Reject 2 / Undecided 1 /
+  Total 6 and undecided-as-keep warning. Copies path is ROOT/export; select Keep
+  JPGs with the crop applied. First Cancel; no file moves/Trash, outputs still empty.
+- [ ] Reopen/recheck summary. ONLY with separate explicit native Trash permission,
+  confirm once. No automatic recovery/undo promise; don't quit during bulk work.
+- [ ] Four archives/four exports match the table; run validate-finalized for
+  root-local hashes/dimensions. Originals unchanged, #03 export square/edited.
+- [ ] Date folder remains with sidecar/notes/nested marker. A zero-photo session
+  row can remain. Success toast: 4 archived / 2 trashed and retained folder path.
+- [ ] User manually inspects ONLY the two generated reject items in macOS Trash
+  if separately authorized. Never empty Trash, auto-remove/restore, or inspect
+  unrelated items. This step was not performed by the fixture agent/checks.
+- [ ] Failure/recovery record/claims: STOP and preserve ROOT/partial outputs;
+  report exact locations, no blind retry, automatic rollback or recursive cleanup.
 
-## Source isolation evidence / smallest proposed changes (not implemented)
-
-Evidence at base `1f638de` (snapshotted under ROOT/tool/sources):
-
-1. `PhotoCullApp.swift`: GUI owns `AppState()` with no config argument; CLI checks
-   only --repair-pairs/--apply and --check before GUI. `AppState.init` defaults to
-   `PCConfig.load()`, immediately scans the configured inbox and opens a session.
-2. `Config.swift`: configPath is NSHomeDirectory()/.config/photocull/config.toml;
-   load() always uses it, writes defaults if missing/unreadable and expands ~.
-   Defaults include the user's Pictures/PhotoCull and Downloads. `load(from:)`
-   exists for code/tests but is not exposed by the app. HOME/PC_FIXTURES is not a
-   supported GUI isolation contract; PC_FIXTURES appears in the test harness only.
-3. `HeadlessCheck.swift`: both CLI routes call PCConfig.load(); --check also scans
-   /Volumes. Neither is a safe diagnostic command here. `Snapshot.swift` and
-   ContentView's --crop affect display/output only, not config selection.
-4. `Library.swift`, `AppState.swift`, `Session.swift`: library, metadata reads,
-   navigation/decision/crop sidecar writes follow cfg.paths.inbox/date. Merely
-   changing paths after startup is too late (startup has already read real data).
-   ContentView's settings case presents HelpSheet, not an independent-config UI.
-5. `Finalize.swift`: GUI confirm calls runMulti(dump:true); archive and dump are
-   cfg.paths.archive/date and cfg.paths.dump/date. Nonrejects include undecided;
-   originals archived unchanged, only exported copies receive edits. Rejects use
-   FileManager.trashItem on exclusively claimed originals. No production Trash
-   override from config/environment (`FinalizeSafety.swift` hooks are code-only).
-   Empty-only rmdir preserves sidecars and unrelated entries; failures retain
-   recovery records/claims, blocking silent retry.
-6. `AppState.beginIngest` unconditionally calls detectSDCards before a source can
-   be chosen; `Ingest.swift` enumerates /Volumes/*/DCIM. Supplying a mock directory
-   later does not isolate the initial volume scan. This fixture excludes Ingest.
-7. `AppState.swift` reads/writes UserDefaults.standard for appearance even on
-   startup; config isolation alone does not isolate app preferences. PairRepair
-   default audit logs use PCConfig.configPath (avoid repair), and Preview/Finder
-   launch external apps (avoid them). Snapshot path is user-selected, not a
-   sandbox boundary (avoid snapshots unless parent separately approves a path).
-
-Smallest proposed production change for parent consideration: a documented,
-strict startup `--config <absolute-file>` option resolved **before any AppState
-or headless load**, feeding that exact explicit configuration through GUI/CLI
-and config-relative audit logs. Explicit-config missing/malformed/incomplete
-paths must fail closed, not fall back to defaults. For full preference isolation,
-use an independent appearance store/domain with no standard-defaults access in
-that mode (or disable persistence/standard reads for a disposable mode). No
-Ingest change is needed for this restricted Finalize checklist because Ingest is
-excluded; testing Ingest later requires bypassing auto-detection with an explicit
-source before any /Volumes access. These changes require separate authorization
-and review; this branch adds no production code or unsafe launch instructions.
-
-Limits: this is generated JPG-only/same-volume input, not camera RAW/embedded-
-preview fidelity, physical-card/cross-volume/crash testing, GUI validation or
-native Trash validation. Compiling the production subset proves fixture format
-and read-only paths, not GUI launch isolation or bundled-source identity.
+Limitations: generated JPG-only/same-volume data, not camera RAW/embedded-preview
+fidelity, physical cards/cross-volume/crash testing or live GUI/Trash validation.
+Existing focused operation checks use generated synthetic RAW marker bytes and
+instance-local synthetic Trash hooks; these are NOT fixture app inputs or a
+production fake Trash option. Native tests never access ordinary config/preferences.

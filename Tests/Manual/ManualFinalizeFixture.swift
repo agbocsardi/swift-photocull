@@ -160,8 +160,8 @@ private func validate(_ root: URL, finalized: Bool) throws {
                 manifest["launch_cleared"] as? Bool == false, "Wrong manifest root/isolation")
     let configURL = root.appendingPathComponent("config/config.toml")
     try require(try String(contentsOf: configURL, encoding: .utf8) == configText(root), "Wrong/incomplete TOML; not loading")
-    // The actual explicit-path production API; never PCConfig.load() or configPath.
-    let cfg = PCConfig.load(from: configURL)
+    // Actual strict fixture API; never ordinary load/default config or configPath.
+    let cfg = try PCConfig.loadFixture(from: configURL.path)
     try require(cfg.toTOML() == configText(root), "Production config parser mismatch")
     let folder = Library.inboxFolder(cfg: cfg, date: date)
     let markerPaths = Set(markers.keys).union(["unrelated-subfolder"])
@@ -234,7 +234,7 @@ private func validate(_ root: URL, finalized: Bool) throws {
     try checkImage(probe, width: 640, height: 640, captureDate: false)
     print("PASS: canonical root, no symlinks/escape; exact config/data file sets; hashes, native JPEG decode, actual Config/Library/Pairing/Summary, pure crop export.")
     print(finalized ? "Finalized fixture files verified; native Trash presence/restorability NOT checked." : "Initial 0 keep / 0 reject / 6 undecided; archive/export empty; no saved decisions.")
-    print("GUI launch BLOCKED: no supported independent startup config; standard preferences and Ingest volume detection are not isolated.")
+    print("Not launch-cleared: use only a reviewed uniquely identified fixture bundle with --fixture-config; no normal app/HOME override. Native Trash requires separate permission.")
 }
 @main private enum Main {
     static func main() {
@@ -245,7 +245,8 @@ private func validate(_ root: URL, finalized: Bool) throws {
             let path = args[2]
             guard let resolved = realpath(path, nil) else { throw NSError(domain: "ManualFixture", code: 6) }
             defer { free(resolved) }
-            try require(path == String(cString: resolved) && path.hasPrefix("/private/tmp/photocull-manual-fixture-") &&
+            try require(path == String(cString: resolved) &&
+                        (path.hasPrefix("/private/tmp/photocull-manual-fixture-") || path.hasPrefix("/private/tmp/photocull-manual-launch-")) &&
                         !String(path.dropFirst("/private/tmp/".count)).contains("/"), "Noncanonical/unsafe fixture root")
             let root = URL(fileURLWithPath: path, isDirectory: true)
             var st = stat()
