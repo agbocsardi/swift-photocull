@@ -55,6 +55,8 @@ unbundled use, invalid identity, missing/duplicate option, or ANY additional
 flags (including --check/--repair-pairs/--apply/--snapshot/--crop/--appearance)
 exits 2 before default config, headless dispatch, AppState or SwiftUI startup.
 Double-clicking this fixture app fails closed; no HOME/PC_FIXTURES override.
+These guards apply to builds containing this change. **The unmodified older dist
+bundle may ignore the new option and read real config: NEVER launch it here.**
 
 Strict `PCConfig.loadFixture(from:)` never uses the ordinary permissive loader or
 writes defaults. It requires:
