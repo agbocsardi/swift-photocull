@@ -1,0 +1,23 @@
+# Disposable manual Finalize fixture — 2026-10-04
+
+## Checklist
+
+- [x] User authorizes delegated fixture preparation; OpenAI Codex gpt-6.1-sol/high selected.
+- [x] Dispatch sol-manual-fixture / w0:p1 in isolated test/manual-finalize-fixture worktree; no launch, real data/config/Trash, shared builds or production edits.
+- [x] Review387e080 source/report; confirm actual GUI lacks explicit configuration routing and uses standard preferences; Ingest scans volumes when opened.
+- [x] Independently generate/validate fresh fixture with native production APIs, exact hashes/dimensions/decode, explicit paths and preservation markers.
+- [x] Merge only reviewed preparation script/generator/checklist; current dist executable hash unchanged.
+- [ ] Ask user to authorize minimal strict startup-config/disposable-preference isolation before production changes.
+- [ ] Delegate any approved isolation patch; independently review fail-closed paths, normal startup preservation and effective regressions.
+- [ ] Prepare/review isolated GUI candidate and exact safe launch instructions; no launch or native Trash without separate authorization.
+- [ ] Separately authorized manual GUI/Finalize/Trash acceptance on generated files only; never empty Trash.
+- [ ] User-approved completed worktree cleanup; preserve external fixture, branch/report/evidence.
+
+## Log
+
+### 2026-10-04
+
+- Worker sol-manual-fixture / w0:p1 / w0; branch test/manual-finalize-fixture, commit387e080c075f97fa77ddb07802720fad65d06436. Worker root/report: /private/tmp/photocull-manual-fixture-W57RS7B8/REPORT.md. Three allowlisted additions; clean checkout, no production changes. Worker reports six negative controls; parent did not independently rerun those controls.
+- Parent read complete generator/script and actual Config/App startup/preference code. Fresh preparation and read-only validation passed at /private/tmp/photocull-manual-fixture-Uf2OLjUt; use this parent-verified root for follow-up. Six genuine960x640 numbered/color JPEGs with EXIF date2024-05-03, unrelated notes/nested marker, empty archive/export, no sidecar. Pure crop/tilt probe640x640; all original hashes preserved. manifest.json and CHECKLIST.md record expected actions/outcomes.
+- Preparation additions merged; no production changes or dist replacement. Exact reviewed dist executable SHA256 still matches installation record. No app launch/GUI/actual Trash/real saved configuration/library/card/mount actions.
+- GUI launch remains BLOCKED: AppState defaults to PCConfig.load() and UserDefaults.standard; GUI cannot select prepared TOML. HOME/PC_FIXTURES are not safe isolation. Require separate user approval for strict startup configuration and disposable preference isolation. Restricted manual test excludes Ingest, diagnostic/repair/snapshot and external-app actions; no safe launch command yet.
