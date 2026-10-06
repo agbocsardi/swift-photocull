@@ -19,7 +19,8 @@ Parent specifies fixes; openai-codex/gpt-6-luna, high reasoning, implements boun
 - [ ] Resolve separate ingest naming/content/progress, competing PairRepair and HeadlessCheck diagnostic findings; not covered by Finalize safety acceptance.
 - [ ] Add/request native end-to-end metering after caller contracts stabilize; never fabricate paint timings.
 - [x] Build and strictly verify an isolated release bundle after integration checks; do not replace or launch installed/running app.
-- [ ] User-approved install/live navigation/editing/scroll/placeholder feel test; Finalize remains not cleared.
+- [x] User-approved project dist update plus separate disposable six-JPEG GUI navigation/edit/cancel/native Finalize/Trash acceptance; exact generated output/Trash bytes independently verified, see 2026-10-04_manual-finalize-fixture_TODO.md.
+- [ ] Larger-session scrolling/placeholder/performance and remaining RAW/cross-volume/crash/Put Back boundaries; basic same-volume fixture is not full live clearance.
 - [x] User-approved cleanup of all five completed Luna worktrees/tabs; preserve branches/reports and active Finalize safety worker.
 - [x] Remove temporary root AGENTS.md after all five implementation patches are complete, reviewed and integration-checked (explicit user request).
 

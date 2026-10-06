@@ -17,7 +17,8 @@
 - [x] Remove child's temporary AGENTS.md after review; archive its exact contract with reports.
 - [x] Close/remove ONLY completed owned worktree wV after user approval; preserve branch/commits/report.
 - [x] User-authorized update of project dist/PhotoCull.app, with previous bundle preserved; strictly verify signature and exact candidate executable hash, do not launch.
-- [ ] Separately authorized native/live acceptance; no real Trash/physical cross-volume/GUI clearance from synthetic checks.
+- [x] Separately authorized six-generated-JPEG GUI/Cancel/native Finalize/Trash acceptance; parent independently verifies final outputs and exact two Trash original hashes, see 2026-10-04_manual-finalize-fixture_TODO.md.
+- [ ] Remaining boundaries: Put Back, camera RAW, physical cross-volume, crash recovery, active-bulk quit/progress and large-filmstrip/paint timing; not cleared by basic fixture acceptance.
 
 ## Dispatch
 

@@ -117,6 +117,47 @@ safety worktree/workspace wV removal is complete, without force; branch/report
 preserved. Identity/removal JSON is in
 `/private/tmp/photocull-finalize-safety-2026-10-03/cleanup/`.
 
+### Live generated-fixture acceptance — 2026-10-06
+
+This supersedes the earlier **no GUI/native Trash run** status for the limited
+case below; it does not expand acceptance to all filesystems/camera inputs.
+Fixture support c6d340e/25b7c58 was independently reviewed and integrated after
+fresh281 startup/operation/navigation checks and four effective negative
+controls; merged source also passed a fresh649-check safety rerun. A separate
+unique fixture bundle/config isolates ordinary application data/preferences.
+Ordinary dist was NOT replaced with test-launch support; never pass its older
+binary --fixture-config. Production Finalize/FinalizeSafety/Session/ImagePipeline
+are byte-identical to the reviewed dist source745e3b3.
+
+Codex Computer Use's direct command launch aborted during AppKit registration.
+Narrow PID/time logs prove inherited sandbox service denials to WindowServer/
+LaunchServices before abort; no source/security/service changes were indicated.
+Computer Use refused Terminal access, so USER launched the identical command in
+ordinary desktop Terminal. Correct fixture identity and six generated photos
+appeared; this materially supports the launch-context explanation.
+
+Actual GUI navigation/crop cancellation/centered1:1+2-degree edit/decisions and
+Finalize dialog→Cancel passed, with exact original hashes retained. Subsequently
+ONE separately directed native Finalize succeeded: **4 archived /2 trashed /
+4 exported /1 edited**. Parent reviewed success screenshot/inventory and
+independently reran finalized-output validation: archive originals unchanged,
+unedited copies identical, edited03 export640×640, sidecar/notes/nested marker
+retained and no claims/recovery residue. Parent independently hashed ONLY exact
+generated reject04/05 files in native ~/.Trash; both match original bytes.
+No broad Trash enumeration, Put Back/delete/empty, retry or cleanup performed.
+Reports: `/private/tmp/photocull-gui-nondestructive-XM7LSZ/REPORT.md` and
+`/private/tmp/photocull-gui-finalize-xiQTaF/REPORT.md`; tracker:
+`2026-10-04_manual-finalize-fixture_TODO.md`. App/evidence remain intact.
+
+**Still untested:** Trash Put Back, real camera RAW, physical cross-volume/crash
+behavior, active-bulk quit/progress and large-filmstrip/request-to-paint timing.
+The six-photo operation completed before progress was sampled. Grouped AX Help
+was stale before decision badges; visible selections/toolbar agreed. Later
+completion screenshot captures were blank despite unchanged AX state; initial
+completion screenshot valid, origin unresolved. These are limitations, not
+silently treated as a full GUI/performance pass or proven app-rendering defects.
+No actual-user-library batch or universal data-loss-immunity claim.
+
 ### Original review findings (baseline gates; status above)
 
 1. **Original preservation is urgent.** Finalize recursively deletes its inbox
