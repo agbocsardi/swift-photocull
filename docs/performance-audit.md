@@ -158,6 +158,15 @@ completion screenshot valid, origin unresolved. These are limitations, not
 silently treated as a full GUI/performance pass or proven app-rendering defects.
 No actual-user-library batch or universal data-loss-immunity claim.
 
+User-requested minimal **synthetic RAW-pair** follow-up also passed: native +RAF
+pair indicators, one kept pair/one rejected pair, once-only Finalize yielding
+6 archivedfiles/2trashed/5unchangedJPEGexports/0edited. Parent independently
+verified kept JPEG+RAF archive hashes and unique rejected JPEG+RAF native Trash
+hashes. Report: `/private/tmp/photocull-raw-pair-gui-cdotwy72/REPORT.md`.
+Opaque generated RAF companions test pairing/file preservation, **not genuine
+camera RAW validity/metadata/decoding**. No new source/new worker/deep matrix;
+user explicitly prefers stopping unnecessary test expansion. No cleanup/Put Back.
+
 ### Original review findings (baseline gates; status above)
 
 1. **Original preservation is urgent.** Finalize recursively deletes its inbox
