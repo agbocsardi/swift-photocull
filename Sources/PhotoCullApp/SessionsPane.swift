@@ -11,7 +11,7 @@ struct SessionsPane: View {
         VStack(spacing: 0) {
             SectionHeader(text: "Sessions", number: 1,
                           focused: app.focusedPane == .sessions,
-                          trailing: AnyView(trailing))
+                          trailing: { trailing })
 
             if app.visibleSessions.isEmpty {
                 EmptyState(icon: "photo.stack",
@@ -27,7 +27,6 @@ struct SessionsPane: View {
                         LazyVStack(spacing: 1) {
                             ForEach(app.visibleSessions) { row in
                                 SessionRowView(row: row)
-                                    .id(row.date)
                             }
                         }
                         .padding(.horizontal, 4)
@@ -142,8 +141,7 @@ private struct SessionRowView: View {
         .help("\(row.date) — click to open, ⌘-click to select for multi-finalize")
         .contextMenu {
             Button("Open") { app.open(date: row.date) }
-            Button("Finalize…") { app.finalizeStats = (try? [Finalize.summary(cfg: app.cfg, date: row.date)]) ?? []
-                                    app.modal = .finalize(date: row.date) }
+            Button("Finalize…") { app.beginFinalize(date: row.date) }
             Divider()
             Button(isSelected ? "Deselect" : "Select for Multi-Finalize") {
                 app.toggleSelection(row.date)

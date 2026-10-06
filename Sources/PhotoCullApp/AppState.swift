@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import Combine
 import PhotoCullCore
 
 enum Pane: Int, CaseIterable {
@@ -94,7 +93,9 @@ final class AppState: ObservableObject {
 
     // MARK: Config + library
 
-    @Published var cfg: PCConfig = PCConfig.load()
+    /// Fixture startup has already validated an explicit config and disposable bundle identity.
+    let fixtureMode: Bool
+    @Published private(set) var cfg: PCConfig
     @Published var sessions: [SessionRow] = []
 
     // MARK: Active session
@@ -104,16 +105,30 @@ final class AppState: ObservableObject {
     @Published var index: Int = 0
     /// Bumped whenever the (reference-typed) Session mutates, to force redraws.
     @Published var revision: Int = 0
+    @Published private(set) var sessionOpenEpoch = 0
     @Published var info = PhotoInfo()
     private var session: Session?
 
     // MARK: UI state
 
-    @Published var cursorDate: String?
+    @Published private var storedCursorDate: String?
+    var cursorDate: String? {
+        get { storedCursorDate }
+        set { guard bulkOperation == nil else { return }; storedCursorDate = newValue }
+    }
     @Published var focusedPane: Pane = .sessions
     @Published var filter: SessionFilter = .all
     @Published var selectedDates: Set<String> = []
-    @Published var modal: Modal?
+    @Published var modal: Modal? {
+        didSet {
+            if case .preparing(let token) = bulkOperation,
+               pendingFinalize?.token == token, modal != pendingFinalize?.modal {
+                pendingFinalize = nil
+                finalizeStats = []
+                bulkOperation = nil
+            }
+        }
+    }
     @Published var showInspector = true
     @Published var appearance: AppAppearance = .system {
         didSet { applyAppearance() }
@@ -125,18 +140,14 @@ final class AppState: ObservableObject {
 
     // MARK: Preview / crop
 
-    @Published var zoom: CGFloat = 1
-    @Published var pan: CGSize = .zero
     @Published var cropMode = false
-    @Published var cropRect: CropRect = .full
     @Published var cropAspect: CropAspect = .free
-    /// Working tilt angle while crop mode is open (degrees, clockwise on screen).
-    @Published var cropTilt: Double = 0
     /// True while the tilt slider has keyboard focus: arrows then nudge tilt
     /// instead of moving the crop region.
     @Published var tiltFocused = false
     /// When true the image pane shows the cropped result rather than the full frame.
     @Published var showCroppedPreview = true
+    // Zoom/pan/cropRect/cropTilt live on `canvas` (CanvasState) above.
 
     // MARK: Ingest
 
@@ -148,38 +159,71 @@ final class AppState: ObservableObject {
 
     @Published var finalizeStats: [FinalizeStats] = []
     @Published var cropExportMode: CropExportMode = .applyCrop
+    enum BulkOperation: Equatable { case preparing(UUID), finalize(UUID), ingest(UUID), repair(UUID) }
+    @Published private(set) var bulkOperation: BulkOperation?
+    private struct PreparedFinalize {
+        let token: UUID, cfg: PCConfig, dates: [String], modal: Modal
+        var ready = false
+    }
+    private var pendingFinalize: PreparedFinalize?
+    /// Instance-local native barriers/callback capture. Never selected through config or environment.
+    struct OperationHooks {
+        var boundary: ((String, UUID) throws -> Void)?
+        var finalize = FinalizeHooks()
+        var repairLogDirectory: URL?
+        var ingestPublisher: ((UUID, @escaping @Sendable (IngestProgress) -> Void) -> Void)?
+    }
+    private let operationHooks: OperationHooks?
+    var permitsTermination: Bool { bulkOperation == nil }
+    var finalizeRunning: Bool {
+        if case .finalize = bulkOperation { return true }
+        return false
+    }
 
+    // Views must observe the loader via environmentObject, not through app —
+    // forwarding its changes here re-invalidated the whole window per decode.
     let imageLoader = ImageLoader()
     let thumbs = ThumbnailStore()
+    /// Zoom/pan/crop geometry lives on its own observable (see CanvasState):
+    /// it changes per drag tick / key repeat, far too often to republish the
+    /// whole app object.
+    let canvas = CanvasState()
 
     private var toastTask: Task<Void, Never>?
-    private var cancellables = Set<AnyCancellable>()
+    /// Debounced sidecar write for navigation (trailing edge, ~500 ms).
+    private var persistTask: Task<Void, Never>?
     private static let appearanceKey = "PhotoCull.appearance"
 
     private func applyAppearance() {
-        if appearance == .system {
-            UserDefaults.standard.removeObject(forKey: Self.appearanceKey)
-        } else {
-            UserDefaults.standard.set(appearance.rawValue, forKey: Self.appearanceKey)
+        // Fixture appearance is transient; SwiftUI/AppKit state uses its unique bundle domain.
+        if !fixtureMode {
+            if appearance == .system {
+                UserDefaults.standard.removeObject(forKey: Self.appearanceKey)
+            } else {
+                UserDefaults.standard.set(appearance.rawValue, forKey: Self.appearanceKey)
+            }
         }
         NSApplication.shared.appearance = appearance.nsAppearance
     }
 
-    init() {
-        let saved = UserDefaults.standard.string(forKey: Self.appearanceKey) ?? "system"
-        appearance = AppAppearance(rawValue: saved) ?? .system
-        applyAppearance()
+    init(cfg: PCConfig? = nil, initializeAppearance: Bool = true,
+         openInitialSession: Bool = true, operationHooks: OperationHooks? = nil,
+         fixtureMode: Bool = false) {
+        precondition(!fixtureMode || cfg != nil, "Fixture AppState requires explicit validated config")
+        self.fixtureMode = fixtureMode
+        self.operationHooks = operationHooks
+        self.cfg = cfg ?? PCConfig.load()
+        if initializeAppearance && !fixtureMode {
+            let saved = UserDefaults.standard.string(forKey: Self.appearanceKey) ?? "system"
+            appearance = AppAppearance(rawValue: saved) ?? .system
+            applyAppearance()
+        }
 
-        // ImageLoader owns its own @Published state, so views observing AppState
-        // would never see a decoded photo arrive. Re-emit its changes.
-        imageLoader.objectWillChange
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-
-        detectedCards = Ingest.detectSDCards()
-        if let first = detectedCards.first { ingestSource = first.path }
+        // No SD-card scan here: `detectSDCards` stats /Volumes/*/DCIM, and a
+        // stale network mount can stall the first frame for seconds.
+        // `beginIngest` detects (and defaults `ingestSource`) when needed.
         reloadLibrary()
-        if let first = sessions.first { open(date: first.date) }
+        if openInitialSession, let first = sessions.first { open(date: first.date) }
     }
 
     // MARK: - Derived
@@ -240,20 +284,30 @@ final class AppState: ObservableObject {
     // MARK: - Library
 
     func reloadLibrary() {
+        guard bulkOperation == nil else { return }
         sessions = Library.loadSessions(cfg: cfg)
         if let active = activeDate, !sessions.contains(where: { $0.date == active }) {
-            activeDate = nil
-            pairs = []
-            session = nil
+            clearActiveSession()
         }
         if cursorDate == nil || !sessions.contains(where: { $0.date == cursorDate }) {
             cursorDate = activeDate ?? sessions.first?.date
         }
     }
 
+    private func clearActiveSession() {
+        persistTask?.cancel()
+        persistTask = nil
+        activeDate = nil
+        pairs = []
+        session = nil
+        info = PhotoInfo()
+        imageLoader.load(url: nil, maxPixel: 0)
+    }
+
     // MARK: - Session loading
 
     func open(date: String) {
+        guard bulkOperation == nil, flushPersist() else { return }
         do {
             let folder = Library.inboxFolder(cfg: cfg, date: date)
             let loaded = try Session.load(folder: folder)
@@ -264,8 +318,9 @@ final class AppState: ObservableObject {
             cursorDate = date
             index = min(max(0, loaded.lastIndex), max(0, loadedPairs.count - 1))
             revision += 1
+            sessionOpenEpoch += 1
             cropMode = false
-            resetZoom()
+            canvas.resetZoom()
             loadCurrent()
         } catch {
             fail("Could not open \(date): \(error.localizedDescription)")
@@ -273,6 +328,7 @@ final class AppState: ObservableObject {
     }
 
     func loadCurrent() {
+        guard bulkOperation == nil else { return }
         guard let pair = currentPair else {
             info = PhotoInfo()
             imageLoader.load(url: nil, maxPixel: 0)
@@ -287,21 +343,52 @@ final class AppState: ObservableObject {
         if index + 1 < pairs.count { neighbours.append(pairs[index + 1].jpg) }
         if index - 1 >= 0 { neighbours.append(pairs[index - 1].jpg) }
         imageLoader.prefetch(urls: neighbours, maxPixel: target)
-        cropRect = session?.crop(for: pair.stem) ?? .full
+        canvas.cropRect = session?.crop(for: pair.stem) ?? .full
     }
 
-    /// Full-resolution target for decoding: big enough to crop from, bounded for memory.
+    /// Full-resolution target for decoding: big enough to crop from, bounded
+    /// for memory. Capped at 3072 because ImageIO decode cost has a cliff
+    /// above ~half native size (measured on a 26 MP file: 91 ms at 3072 vs
+    /// 197 ms at 4096); 3072 also shrinks a cache slot 45→25 MB. Uses the
+    /// EXIF block `loadCurrent` already read — no second disk read.
     var currentMaxPixel: Int {
-        let info = ExifReader.read(url: currentPair?.jpg ?? URL(fileURLWithPath: "/"))
         let longest = max(info.pixelWidth, info.pixelHeight)
-        if longest > 0 { return min(longest, 4096) }
-        return 4096
+        return longest > 0 ? min(longest, 3072) : 3072
     }
 
-    private func persist() {
-        guard let session, let date = activeDate else { return }
-        do { try session.save(folder: Library.inboxFolder(cfg: cfg, date: date)) }
-        catch { fail("Could not save session: \(error.localizedDescription)") }
+    /// Trailing-edge debounce for the per-keystroke navigation write: j/k no
+    /// longer hits disk once per key, the sidecar lands ~500 ms after the
+    /// last one (or immediately via `flushPersist`).
+    private func schedulePersist() {
+        guard bulkOperation == nil else { return }
+        persistTask?.cancel()
+        guard let target = session, let date = activeDate else { return }
+        persistTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.persistTask = nil
+            self.persist(target, date)
+        }
+    }
+
+    /// Save the active session at every session/destructive-operation boundary.
+    /// A failure leaves it active and prevents the caller from proceeding.
+    @discardableResult
+    private func flushPersist(ownedBy owner: BulkOperation? = nil) -> Bool {
+        guard bulkOperation == owner else { return false }
+        persistTask?.cancel()
+        persistTask = nil
+        guard let session, let date = activeDate else { return true }
+        do {
+            let folder = Library.inboxFolder(cfg: cfg, date: date)
+            // Permissive browsing must not turn corrupt/future metadata into a fresh saved sidecar.
+            _ = try Session.load(folder: folder, strict: true)
+            try session.save(folder: folder)
+            return true
+        } catch {
+            fail("Could not save session: \(error.localizedDescription)")
+            return false
+        }
     }
 
     // MARK: - Undo / redo
@@ -322,7 +409,7 @@ final class AppState: ObservableObject {
     /// Apply a change, record it for undo, drop any redo history.
     private func run(_ what: String, change: @escaping (Session) -> Void,
                      revert: @escaping (Session) -> Void) {
-        guard let target = session, let date = activeDate else { return }
+        guard bulkOperation == nil, let target = session, let date = activeDate else { return }
         change(target)
         undoStack.append(Edit(what: what, date: date, target: target,
                               change: change, revert: revert))
@@ -332,6 +419,7 @@ final class AppState: ObservableObject {
     }
 
     func undo() {
+        guard bulkOperation == nil else { return }
         guard let edit = undoStack.popLast() else { toastMessage("Nothing to undo"); return }
         edit.revert(edit.target)
         redoStack.append(edit)
@@ -342,6 +430,7 @@ final class AppState: ObservableObject {
     }
 
     func redo() {
+        guard bulkOperation == nil else { return }
         guard let edit = redoStack.popLast() else { toastMessage("Nothing to redo"); return }
         edit.change(edit.target)
         undoStack.append(edit)
@@ -352,24 +441,29 @@ final class AppState: ObservableObject {
     }
 
     private func persist(_ target: Session, _ date: String) {
-        do { try target.save(folder: Library.inboxFolder(cfg: cfg, date: date)) }
+        guard bulkOperation == nil else { return }
+        do {
+            let folder = Library.inboxFolder(cfg: cfg, date: date)
+            _ = try Session.load(folder: folder, strict: true)
+            try target.save(folder: folder)
+        }
         catch { fail("Could not save session: \(error.localizedDescription)") }
     }
 
     // MARK: - Navigation
 
     func setIndex(_ newIndex: Int) {
-        guard !pairs.isEmpty else { return }
+        guard bulkOperation == nil, !pairs.isEmpty else { return }
         index = min(max(0, newIndex), pairs.count - 1)
         session?.lastIndex = index
-        persist()
+        schedulePersist()
         cropMode = false
-        resetZoom()
+        canvas.resetZoom()
         loadCurrent()
     }
 
     func nav(_ dir: NavDir, skipDecided: Bool = false) {
-        guard !pairs.isEmpty else { return }
+        guard bulkOperation == nil, !pairs.isEmpty else { return }
         if skipDecided {
             let step = dir == .next ? 1 : -1
             var i = index + step
@@ -380,12 +474,14 @@ final class AppState: ObservableObject {
             toastMessage(dir == .next ? "No later undecided photo" : "No earlier undecided photo")
             return
         }
-        setIndex(index + (dir == .next ? 1 : -1))
+        let target = min(max(index + (dir == .next ? 1 : -1), 0), pairs.count - 1)
+        guard target != index else { return }
+        setIndex(target)
     }
 
     /// Toggle-to-clear, otherwise set and auto-advance — matches the webapp.
     func mark(_ wanted: Decision) {
-        guard let pair = currentPair else { return }
+        guard bulkOperation == nil, let pair = currentPair else { return }
         let stem = pair.stem
         let current = decision(for: stem)
         if current == wanted {
@@ -401,7 +497,7 @@ final class AppState: ObservableObject {
     }
 
     func clearDecision() {
-        guard let pair = currentPair else { return }
+        guard bulkOperation == nil, let pair = currentPair else { return }
         let stem = pair.stem
         let current = decision(for: stem)
         run("clearing \(stem)", change: { $0.set(stem, .undecided) },
@@ -410,41 +506,55 @@ final class AppState: ObservableObject {
     }
 
     private func refreshRows() {
-        let keep = sessions
-        sessions = Library.loadSessions(cfg: cfg)
-        // Preserve scroll/cursor identity across the reload.
-        _ = keep
+        guard bulkOperation == nil else { return }
+        // In-memory row update instead of a full inbox rescan: the open
+        // session + pairs already hold everything `Library.loadSessions`
+        // would re-derive from disk (and a rescan ran on every keystroke).
+        // Full rescans stay in `reloadLibrary` (⌘R, post-ingest, post-finalize).
+        guard let date = activeDate, let session,
+              let i = sessions.firstIndex(where: { $0.date == date }) else { return }
+        let stems = pairs.map(\.stem)
+        let counts = session.statusCounts(stems: stems)
+        sessions[i] = SessionRow(date: date,
+                                 total: pairs.count,
+                                 keep: counts.keep,
+                                 reject: counts.reject,
+                                 undecided: counts.undecided,
+                                 status: session.folderStatus(stems: stems),
+                                 cropped: session.crops.count)
     }
 
     // MARK: - Crop
 
     func enterCropMode() {
-        guard currentPair != nil else { return }
-        cropRect = currentCrop ?? .full
-        cropTilt = currentTilt
+        guard bulkOperation == nil, currentPair != nil else { return }
+        canvas.cropRect = currentCrop ?? .full
+        canvas.cropTilt = currentTilt
         cropAspect = .free
         cropMode = true
         focusedPane = .image
     }
 
     func cancelCrop() {
-        cropRect = currentCrop ?? .full
-        cropTilt = currentTilt
+        guard bulkOperation == nil else { return }
+        canvas.cropRect = currentCrop ?? .full
+        canvas.cropTilt = currentTilt
         cropMode = false
     }
 
     func resetCrop() {
-        cropRect = .full
+        guard bulkOperation == nil else { return }
+        canvas.cropRect = .full
         cropAspect = .free
     }
 
     func commitCrop() {
-        guard let stem = currentStem else { return }
-        let rect = cropRect.clamped(minSize: 0.02)
+        guard bulkOperation == nil, let stem = currentStem else { return }
+        let rect = canvas.cropRect.clamped(minSize: 0.02)
         let priorCrop = session?.crop(for: stem)
         let priorTilt = session?.tilt(for: stem)
         let newCrop: CropRect? = rect.isFullFrame ? nil : rect
-        let newTilt: Double? = abs(cropTilt) < 0.05 ? nil : cropTilt
+        let newTilt: Double? = abs(canvas.cropTilt) < 0.05 ? nil : canvas.cropTilt
         run(newCrop == nil ? "clearing the crop" : "cropping \(stem)",
             change: { s in s.setCrop(stem, newCrop); s.setTilt(stem, newTilt) },
             revert: { s in s.setCrop(stem, priorCrop); s.setTilt(stem, priorTilt) })
@@ -455,14 +565,14 @@ final class AppState: ObservableObject {
     }
 
     func clearCrop() {
-        guard let stem = currentStem else { return }
+        guard bulkOperation == nil, let stem = currentStem else { return }
         let priorCrop = session?.crop(for: stem)
         let priorTilt = session?.tilt(for: stem)
         run("clearing the crop",
             change: { s in s.setCrop(stem, nil); s.setTilt(stem, nil) },
             revert: { s in s.setCrop(stem, priorCrop); s.setTilt(stem, priorTilt) })
-        cropRect = .full
-        cropTilt = 0
+        canvas.cropRect = .full
+        canvas.cropTilt = 0
         refreshRows()
         toastMessage("Crop cleared")
     }
@@ -470,7 +580,7 @@ final class AppState: ObservableObject {
     /// Quarter-turn the current photo. Persisted immediately — rotation is an
     /// orientation fix, not something that needs an edit-mode commit.
     func rotateQuarter(_ dir: Int) {
-        guard let stem = currentStem else { return }
+        guard bulkOperation == nil, let stem = currentStem else { return }
         let prior = currentQuarterTurns
         run("rotating \(stem)",
             change: { $0.setQuarter(stem, prior + dir) },
@@ -480,14 +590,16 @@ final class AppState: ObservableObject {
     /// Nudge the working tilt in crop mode. Values land on a 0.25° grid,
     /// clamped to ±45°.
     func nudgeTilt(_ delta: Double) {
-        let v = ((cropTilt + delta) * 4).rounded() / 4
-        cropTilt = min(45, max(-45, v))
+        guard bulkOperation == nil else { return }
+        let v = ((canvas.cropTilt + delta) * 4).rounded() / 4
+        canvas.cropTilt = min(45, max(-45, v))
     }
 
-    func resetTilt() { cropTilt = 0 }
+    func resetTilt() { guard bulkOperation == nil else { return }; canvas.cropTilt = 0 }
 
     /// Constrain `cropRect` to the selected aspect ratio, anchored at its centre.
     func applyAspect() {
+        guard bulkOperation == nil else { return }
         guard let ratio = cropAspect.ratio else {
             if cropAspect == .original, let pair = currentPair,
                let size = ImagePipeline.orientedPixelSize(url: pair.jpg), size.height > 0 {
@@ -504,18 +616,19 @@ final class AppState: ObservableObject {
         guard let pair = currentPair,
               let size = ImagePipeline.orientedPixelSize(url: pair.jpg), size.height > 0 else { return }
         let r = ratio * Double(size.height) / Double(size.width)
-        let cx = cropRect.x + cropRect.w / 2
-        let cy = cropRect.y + cropRect.h / 2
-        var w = cropRect.w
+        let cx = canvas.cropRect.x + canvas.cropRect.w / 2
+        let cy = canvas.cropRect.y + canvas.cropRect.h / 2
+        var w = canvas.cropRect.w
         var h = w / r
         if h > 1 { h = 1; w = h * r }
         if w > 1 { w = 1; h = w / r }
         let x = min(max(0, cx - w / 2), 1 - w)
         let y = min(max(0, cy - h / 2), 1 - h)
-        cropRect = CropRect(x: x, y: y, w: w, h: h)
+        canvas.cropRect = CropRect(x: x, y: y, w: w, h: h)
     }
 
     func cycleAspect() {
+        guard bulkOperation == nil else { return }
         let all = CropAspect.allCases
         let i = all.firstIndex(of: cropAspect) ?? 0
         cropAspect = all[(i + 1) % all.count]
@@ -524,22 +637,12 @@ final class AppState: ObservableObject {
 
     // MARK: - Zoom / pan
 
-    func resetZoom() {
-        zoom = 1
-        pan = .zero
-    }
-
-    func zoomIn() { zoom = min(zoom * 1.25, 8) }
-    func zoomOut() { zoom = max(zoom / 1.25, 0.1) }
-    func zoomActual() { zoom = 1; pan = .zero }
-
-    func panBy(dx: CGFloat, dy: CGFloat) {
-        pan = CGSize(width: pan.width + dx, height: pan.height + dy)
-    }
+    // resetZoom/zoomIn/zoomOut moved to CanvasState.
 
     // MARK: - Selection + filter
 
     func toggleSelection(_ date: String) {
+        guard bulkOperation == nil else { return }
         if selectedDates.contains(date) { selectedDates.remove(date) } else { selectedDates.insert(date) }
     }
 
@@ -548,31 +651,44 @@ final class AppState: ObservableObject {
         toggleSelection(date)
     }
 
-    func clearSelection() { selectedDates.removeAll() }
+    func clearSelection() { guard bulkOperation == nil else { return }; selectedDates.removeAll() }
 
     func toggleInspector() {
         withAnimation(Motion.normal) { showInspector.toggle() }
     }
 
     func cycleFilter() {
+        guard bulkOperation == nil else { return }
         filter = SessionFilter(rawValue: (filter.rawValue + 1) % SessionFilter.allCases.count) ?? .all
         if let cursor = cursorDate, !visibleSessions.contains(where: { $0.date == cursor }) {
             cursorDate = visibleSessions.first?.date
         }
     }
 
+    /// WHY step-opens: moving the sidebar cursor also opens the session it
+    /// lands on, so browsing sessions is one keypress per step instead of
+    /// step-then-Enter. The `!= activeDate` guard keeps stepping a no-op when
+    /// the target is already open (e.g. repeated steps at a clamped end);
+    /// re-opening is cheap anyway (~5 ms + async decode that ImageLoader
+    /// generation-cancels), so rapid stepping is safe. open() never moves
+    /// focus, so pane 1 keeps the keys and you can keep stepping.
     func moveCursor(_ dir: NavDir) {
+        guard bulkOperation == nil else { return }
         let rows = visibleSessions
         guard !rows.isEmpty else { return }
         guard let cursor = cursorDate, let i = rows.firstIndex(where: { $0.date == cursor }) else {
             cursorDate = rows.first?.date
+            if let target = cursorDate, target != activeDate { open(date: target) }
             return
         }
         let next = dir == .next ? min(i + 1, rows.count - 1) : max(i - 1, 0)
-        cursorDate = rows[next].date
+        let target = rows[next].date
+        cursorDate = target
+        if target != activeDate { open(date: target) }
     }
 
     func openCursorSession() {
+        guard bulkOperation == nil else { return }
         guard let date = cursorDate else { return }
         if date == activeDate { focusedPane = .image } else { open(date: date) }
     }
@@ -580,6 +696,7 @@ final class AppState: ObservableObject {
     // MARK: - External preview
 
     func openInPreview() {
+        guard permitsOrdinaryIO(), bulkOperation == nil else { return }
         guard let url = currentPair?.jpg else { return }
         let preview = URL(fileURLWithPath: "/System/Applications/Preview.app")
         if FileManager.default.fileExists(atPath: preview.path) {
@@ -591,6 +708,7 @@ final class AppState: ObservableObject {
     }
 
     func revealInFinder() {
+        guard permitsOrdinaryIO(), bulkOperation == nil else { return }
         guard let url = currentPair?.jpg else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
@@ -599,49 +717,139 @@ final class AppState: ObservableObject {
 
     func beginFinalizeCurrent() {
         guard let date = activeDate else { return }
-        do {
-            finalizeStats = [try Finalize.summary(cfg: cfg, date: date)]
-            modal = .finalize(date: date)
-        } catch { fail("Could not read session: \(error.localizedDescription)") }
+        beginFinalize(date: date)
+    }
+
+    /// Synchronous native bulk APIs run on GCD, never on a blocked cooperative task.
+    private nonisolated static func onNativeQueue<T>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do { continuation.resume(returning: try body()) }
+                catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
+    private func canStartBulk() -> Bool {
+        guard bulkOperation == nil else { toastMessage("Wait for the file operation to finish"); return false }
+        guard !cropMode else { toastMessage("Commit or cancel the crop draft first"); return false }
+        return true
+    }
+
+    func beginFinalize(date: String) {
+        guard canStartBulk(), modal == nil else { return }
+        prepareFinalize(dates: [date], modal: .finalize(date: date))
     }
 
     func beginGlobalFinalize() {
+        guard canStartBulk(), modal == nil else { return }
         let dates = selectedDates.isEmpty ? visibleSessions.map(\.date) : Array(selectedDates)
         guard !dates.isEmpty else { return }
-        do {
-            finalizeStats = try dates.sorted().map { try Finalize.summary(cfg: cfg, date: $0) }
-            modal = .globalFinalize
-        } catch { fail("Could not read sessions: \(error.localizedDescription)") }
+        prepareFinalize(dates: dates.sorted(), modal: .globalFinalize)
+    }
+
+    private func prepareFinalize(dates: [String], modal expectedModal: Modal) {
+        // Cancel the timer BEFORE validation: permissive browsing may have opened corrupt metadata.
+        // Validate all targets before any outgoing save; never "repair" corrupt JSON by flushing it.
+        persistTask?.cancel(); persistTask = nil
+        let token = UUID(), capturedConfig = cfg, outgoing = activeDate, hooks = operationHooks
+        pendingFinalize = PreparedFinalize(token: token, cfg: capturedConfig, dates: dates, modal: expectedModal)
+        bulkOperation = .preparing(token)
+        finalizeStats = []
+        modal = expectedModal
+        Task {
+            do {
+                _ = try await Self.onNativeQueue {
+                    try hooks?.boundary?("summaryBefore", token)
+                    let validationDates = Set(dates + (outgoing.map { [$0] } ?? []))
+                    for date in validationDates { _ = try Finalize.summary(cfg: capturedConfig, date: date) }
+                }
+                guard preparationMatches(token) else { return }
+                guard flushPersist(ownedBy: .preparing(token)) else { cancelPreparation(token); return }
+                let stats = try await Self.onNativeQueue {
+                    let stats = try dates.map { try Finalize.summary(cfg: capturedConfig, date: $0) }
+                    try hooks?.boundary?("summaryAfter", token)
+                    return stats
+                }
+                guard preparationMatches(token) else { return }
+                finalizeStats = stats
+                pendingFinalize?.ready = true
+                // Ownership remains held for the entire confirmation sheet lifetime.
+            } catch {
+                guard preparationMatches(token) else { return }
+                cancelPreparation(token)
+                fail("Could not read sessions: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func preparationMatches(_ token: UUID) -> Bool {
+        bulkOperation == .preparing(token) && pendingFinalize?.token == token &&
+            pendingFinalize?.cfg == cfg && pendingFinalize?.modal == modal
+    }
+    private func cancelPreparation(_ token: UUID) {
+        guard bulkOperation == .preparing(token) else { return }
+        pendingFinalize = nil; finalizeStats = []; bulkOperation = nil; modal = nil
     }
 
     func confirmFinalize() {
-        let dates: [String]
-        switch modal {
-        case .finalize(let date): dates = [date]
-        case .globalFinalize:
-            dates = finalizeStats.map(\.date)
-        default: return
-        }
-        modal = nil
-        do {
-            if dates.count == 1 {
-                let r = try Finalize.run(cfg: cfg, date: dates[0], dump: true,
-                                         cropMode: cropExportMode, dumpOverride: nil)
-                toastMessage("Finalized \(dates[0]) — \(r.archived) archived, \(r.trashed) trashed")
-            } else {
-                let r = try Finalize.runMulti(cfg: cfg, dates: dates, dump: true, cropMode: cropExportMode)
-                toastMessage("Finalized \(r.sessions) sessions — \(r.archived) archived, \(r.trashed) trashed")
+        guard let prepared = pendingFinalize, prepared.ready, preparationMatches(prepared.token), !cropMode else { return }
+        let token = prepared.token, dates = prepared.dates, cfg = prepared.cfg
+        let exportMode = cropExportMode, hooks = operationHooks
+        bulkOperation = .finalize(token) // Transition first: modal dismissal cannot cancel native work.
+        pendingFinalize = nil; modal = nil
+        toastMessage("Finalizing…")
+        Task {
+            do {
+                let result = try await Self.onNativeQueue {
+                    try hooks?.boundary?("finalizeBefore", token)
+                    let result = try Finalize.runMulti(cfg: cfg, dates: dates, dump: true, cropMode: exportMode,
+                                                        hooks: hooks?.finalize ?? FinalizeHooks())
+                    try hooks?.boundary?("finalizeAfter", token)
+                    return result
+                }
+                guard bulkOperation == .finalize(token) else { return }
+                finishFileOperation(affected: Set(dates))
+                finalizeStats = []
+                let retained = result.retainedFolders.isEmpty ? "" : " — retained: \(result.retainedFolders.joined(separator: ", "))"
+                toastMessage("Finalized \(result.sessions) session(s) — \(result.archived) archived, \(result.trashed) trashed\(retained)")
+            } catch {
+                guard bulkOperation == .finalize(token) else { return }
+                finishFileOperation(affected: Set(dates))
+                finalizeStats = []
+                fail("Finalize failed: \(error.localizedDescription)")
             }
-            selectedDates.removeAll()
-            if let d = activeDate, dates.contains(d) { activeDate = nil; pairs = []; session = nil }
-            reloadLibrary()
-            if let first = sessions.first { open(date: first.date) }
-        } catch { fail("Finalize failed: \(error.localizedDescription)") }
+        }
+    }
+
+    private var knownSessionDates: Set<String> {
+        Set(sessions.map(\.date) + undoStack.map(\.date) + redoStack.map(\.date) + (activeDate.map { [$0] } ?? []))
+    }
+
+    /// Dispose stale references/timers while still owned; only then release and reload actual partial state.
+    private func finishFileOperation(affected: Set<String>) {
+        let reopen = activeDate
+        persistTask?.cancel(); persistTask = nil
+        undoStack.removeAll { affected.contains($0.date) }
+        redoStack.removeAll { affected.contains($0.date) }
+        if let date = activeDate, affected.contains(date) { clearActiveSession() }
+        selectedDates.subtract(affected)
+        bulkOperation = nil
+        reloadLibrary()
+        if let reopen, sessions.contains(where: { $0.date == reopen }) { open(date: reopen) }
+        else if activeDate == nil, let first = sessions.first { open(date: first.date) }
     }
 
     // MARK: - Ingest
 
+    /// Shared entry guard, before even sidecar flush, card detection or external app access.
+    private func permitsOrdinaryIO() -> Bool {
+        guard !fixtureMode else { toastMessage("Unavailable in disposable fixture mode"); return false }
+        return true
+    }
+
     func beginIngest() {
+        guard permitsOrdinaryIO(), canStartBulk(), modal == nil, flushPersist() else { return }
         detectedCards = Ingest.detectSDCards()
         if ingestSource.isEmpty, let first = detectedCards.first { ingestSource = first.path }
         ingestProgress = IngestProgress()
@@ -649,83 +857,121 @@ final class AppState: ObservableObject {
     }
 
     func startIngest() {
+        guard permitsOrdinaryIO(), canStartBulk(), modal == nil || modal == .ingest, flushPersist() else { return }
+        let token = UUID(), cfg = cfg, hooks = operationHooks
         let source = ingestSource.trimmingCharacters(in: .whitespacesAndNewlines)
-        var progress = IngestProgress()
-        progress.running = true
-        ingestProgress = progress
-        let cfg = self.cfg
-        Task.detached(priority: .userInitiated) {
+        bulkOperation = .ingest(token)
+        var progress = IngestProgress(); progress.running = true; ingestProgress = progress
+        let throttle = ProgressThrottle()
+        let publish: @Sendable (IngestProgress) -> Void = { [weak self] p in
+            guard throttle.observe(p) else { return }
+            Task { @MainActor in self?.acceptIngestProgress(p, token: token) }
+        }
+        Task {
+            // Capture authoritative callback totals even if MainActor publications are throttled/queued.
+            let outcome: Result<IngestResult, Error>
             do {
-                let result = try Ingest.run(cfg: cfg, source: source.isEmpty ? nil : URL(fileURLWithPath: source)) { p in
-                    Task { @MainActor in self.ingestProgress = p }
-                }
-                await MainActor.run {
-                    var done = self.ingestProgress
-                    done.running = false
-                    done.done = true
-                    done.copied = result.copied
-                    done.skipped = result.skipped
-                    self.ingestProgress = done
-                    self.reloadLibrary()
-                    self.toastMessage("Ingested \(result.copied) files into \(result.folders.count) session(s)")
-                }
-            } catch {
-                await MainActor.run {
-                    var p = self.ingestProgress
-                    p.running = false
-                    p.done = true
-                    p.error = error.localizedDescription
-                    self.ingestProgress = p
-                }
+                outcome = .success(try await Self.onNativeQueue {
+                    hooks?.ingestPublisher?(token, publish)
+                    try hooks?.boundary?("ingestBefore", token)
+                    let result = try Ingest.run(cfg: cfg, source: source.isEmpty ? nil : URL(fileURLWithPath: source), onProgress: publish)
+                    try hooks?.boundary?("ingestAfter", token)
+                    return result
+                })
+            } catch { outcome = .failure(error) }
+            guard bulkOperation == .ingest(token) else { return }
+            var terminal = throttle.snapshot()
+            terminal.running = false; terminal.done = true
+            switch outcome {
+            case .success(let result):
+                terminal.copied = result.copied; terminal.skipped = result.skipped; terminal.error = nil
+                terminal.total = max(terminal.total, result.copied + result.skipped)
+                ingestProgress = terminal
+                // Ingest can add to any date: old pair lists/undo references must be reloaded, not saved.
+                finishFileOperation(affected: knownSessionDates)
+                toastMessage("Ingested \(result.copied) files into \(result.folders.count) session(s)")
+            case .failure(let error):
+                terminal.error = error.localizedDescription; ingestProgress = terminal
+                finishFileOperation(affected: knownSessionDates)
             }
         }
+    }
+
+    private func acceptIngestProgress(_ p: IngestProgress, token: UUID) {
+        guard bulkOperation == .ingest(token), !ingestProgress.done,
+              p.copied >= ingestProgress.copied, p.skipped >= ingestProgress.skipped,
+              p.total >= ingestProgress.total else { return }
+        var live = p
+        // Callback completion is not authoritative native completion; retain ownership until return/drain.
+        live.running = true; live.done = false
+        ingestProgress = live
     }
 
     // MARK: - RAW pair repair
 
-    /// Report how many RAW files are misnamed (dry run).
-    @discardableResult
-    func checkPairing() -> RepairReport? {
-        do {
-            let report = PairRepair.plan(cfg: cfg)
-            if report.renamed == 0 {
-                toastMessage("RAW pairing OK — nothing to repair")
-            } else {
-                toastMessage("\(report.renamed) RAW files can be re-paired (:R to repair)")
+    func checkPairing() { planPairRepair(interactive: false) }
+    func repairPairingInteractive() { planPairRepair(interactive: true) }
+
+    private func planPairRepair(interactive: Bool) {
+        guard permitsOrdinaryIO(), canStartBulk(), modal == nil, flushPersist() else { return }
+        let token = UUID(), cfg = cfg, hooks = operationHooks
+        bulkOperation = .repair(token)
+        Task {
+            do {
+                let report = try await Self.onNativeQueue {
+                    try hooks?.boundary?("repairPlan", token)
+                    return PairRepair.plan(cfg: cfg)
+                }
+                guard bulkOperation == .repair(token) else { return }
+                guard interactive, report.renamed > 0, modal == nil else {
+                    bulkOperation = nil
+                    toastMessage(report.renamed == 0 ? "RAW pairing OK — nothing to repair" : "\(report.renamed) RAW files can be re-paired (:R to repair)")
+                    return
+                }
+                confirmPairRepair(report, token: token, cfg: cfg)
+            } catch {
+                guard bulkOperation == .repair(token) else { return }
+                bulkOperation = nil; fail("Repair planning failed: \(error.localizedDescription)")
             }
-            return report
-        } catch {
-            fail("Pairing check failed: \(error.localizedDescription)")
-            return nil
         }
     }
 
-    /// Ask for confirmation, then rename misnamed RAWs back into their pairs.
-    func repairPairingInteractive() {
-        guard let report = checkPairing(), report.renamed > 0 else { return }
+    private func confirmPairRepair(_ report: RepairReport, token: UUID, cfg: PCConfig) {
+        guard bulkOperation == .repair(token), modal == nil else { return }
         let alert = NSAlert()
         alert.messageText = "Re-pair \(report.renamed) RAW files?"
-        alert.informativeText = """
-            Ingest used to rename a RAW to "<name>_2" whenever its JPG was copied in the \
-            same run, which broke the JPG+RAW pair.
-
-            This renames them back (e.g. DSCF0677_2.RAF -> DSCF0677.RAF) when the matching \
-            JPG exists and the target name is free. Originals are not modified or deleted.
-            """
-        alert.addButton(withTitle: "Re-pair")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        applyPairRepair()
+        alert.informativeText = "Renames misnamed RAW files when the matching JPG exists and the target is free. Originals are not modified or deleted."
+        alert.addButton(withTitle: "Re-pair"); alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { bulkOperation = nil; return }
+        guard bulkOperation == .repair(token) else { return }
+        executePairRepair(token: token, cfg: cfg)
     }
 
     func applyPairRepair() {
-        do {
-            let report = try PairRepair.apply(cfg: cfg)
-            toastMessage("Re-paired \(report.renamed) RAW files")
-            reloadLibrary()
-            if let date = activeDate { open(date: date) }
-        } catch {
-            fail("Repair failed: \(error.localizedDescription)")
+        guard permitsOrdinaryIO(), canStartBulk(), modal == nil, flushPersist() else { return }
+        let token = UUID()
+        bulkOperation = .repair(token)
+        executePairRepair(token: token, cfg: cfg)
+    }
+
+    private func executePairRepair(token: UUID, cfg: PCConfig) {
+        let affected = knownSessionDates, hooks = operationHooks
+        Task {
+            do {
+                let report = try await Self.onNativeQueue {
+                    try hooks?.boundary?("repairBefore", token)
+                    let report = try PairRepair.apply(cfg: cfg, logDirectory: hooks?.repairLogDirectory)
+                    try hooks?.boundary?("repairAfter", token)
+                    return report
+                }
+                guard bulkOperation == .repair(token) else { return }
+                finishFileOperation(affected: affected)
+                toastMessage("Re-paired \(report.renamed) RAW files")
+            } catch {
+                guard bulkOperation == .repair(token) else { return }
+                finishFileOperation(affected: affected)
+                fail("Repair failed: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -751,15 +997,20 @@ final class AppState: ObservableObject {
         case "I": toggleInspector()
         case "c": enterCropMode()
         case "R": repairPairingInteractive()
-        case "q": NSApp.terminate(nil)
+        case "q": if prepareForTermination() { NSApp.terminate(nil) }
         case "w": saveAndClose()
         default:
             if !cmd.isEmpty { toastMessage("Unknown command: :\(cmd)") }
         }
     }
 
+    func prepareForTermination() -> Bool {
+        guard permitsTermination else { toastMessage("Wait for the file operation to finish"); return false }
+        return flushPersist()
+    }
+
     func saveAndClose() {
-        persist()
+        guard bulkOperation == nil, flushPersist() else { return }
         NSApp.keyWindow?.performClose(nil)
     }
 
@@ -822,6 +1073,7 @@ final class AppState: ObservableObject {
     }
 
     private func handleCropKey(_ key: KeyEvent) -> Bool {
+        guard bulkOperation == nil else { return true }
         // While the tilt slider has focus, arrows adjust tilt, not the crop.
         if tiltFocused, let dir = key.arrow {
             let d: Double = dir == .left || dir == .up ? -1 : 1
@@ -831,25 +1083,25 @@ final class AppState: ObservableObject {
         let step: Double = key.shift ? 0.02 : 0.005
         switch key.arrow {
         case .left:
-            cropRect.x = max(0, cropRect.x - step)
+            canvas.cropRect.x = max(0, canvas.cropRect.x - step)
             return true
         case .right:
-            cropRect.x = min(1 - cropRect.w, cropRect.x + step)
+            canvas.cropRect.x = min(1 - canvas.cropRect.w, canvas.cropRect.x + step)
             return true
         case .up:
-            cropRect.y = max(0, cropRect.y - step)
+            canvas.cropRect.y = max(0, canvas.cropRect.y - step)
             return true
         case .down:
-            cropRect.y = min(1 - cropRect.h, cropRect.y + step)
+            canvas.cropRect.y = min(1 - canvas.cropRect.h, canvas.cropRect.y + step)
             return true
         case nil: break
         }
 
         switch key.chars {
-        case "h": cropRect.x = max(0, cropRect.x - step); return true
-        case "l": cropRect.x = min(1 - cropRect.w, cropRect.x + step); return true
-        case "k": cropRect.y = max(0, cropRect.y - step); return true
-        case "j": cropRect.y = min(1 - cropRect.h, cropRect.y + step); return true
+        case "h": canvas.cropRect.x = max(0, canvas.cropRect.x - step); return true
+        case "l": canvas.cropRect.x = min(1 - canvas.cropRect.w, canvas.cropRect.x + step); return true
+        case "k": canvas.cropRect.y = max(0, canvas.cropRect.y - step); return true
+        case "j": canvas.cropRect.y = min(1 - canvas.cropRect.h, canvas.cropRect.y + step); return true
         case "a": cycleAspect(); return true
         case "r": resetCrop(); return true
         case "p": showCroppedPreview.toggle(); return true
@@ -875,9 +1127,9 @@ final class AppState: ObservableObject {
         case "c": enterCropMode(); return true
         case "?": modal = .help; return true
         case "f": revealInFinder(); return true
-        case "+", "=": zoomIn(); return true
-        case "-": zoomOut(); return true
-        case "0": resetZoom(); return true
+        case "+", "=": canvas.zoomIn(); return true
+        case "-": canvas.zoomOut(); return true
+        case "0": canvas.resetZoom(); return true
         default: break
         }
 
@@ -938,4 +1190,24 @@ final class AppState: ObservableObject {
         default: return false
         }
     }
+}
+
+/// Rate-limits main-thread progress publication from the ingest copy loop.
+/// Progress callbacks may arrive concurrently from ingest copy workers.
+private final class ProgressThrottle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last = Date.distantPast
+    private var latest = IngestProgress()
+
+    /// Collect every callback under the same lock, even when its UI publication is throttled.
+    func observe(_ p: IngestProgress) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard p.copied >= latest.copied, p.skipped >= latest.skipped, p.total >= latest.total else { return false }
+        latest = p
+        let now = Date()
+        guard p.done || now.timeIntervalSince(last) >= 0.15 else { return false }
+        last = now
+        return true
+    }
+    func snapshot() -> IngestProgress { lock.lock(); defer { lock.unlock() }; return latest }
 }

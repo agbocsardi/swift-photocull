@@ -3,8 +3,15 @@ import AppKit
 
 @main
 enum PhotoCullMain {
-    static func main() {
+    @MainActor static func main() {
         let args = CommandLine.arguments
+        do {
+            StartupConfiguration.current = try StartupConfiguration.resolve(
+                arguments: Array(args.dropFirst()), bundleIdentifier: Bundle.main.bundleIdentifier)
+        } catch {
+            FileHandle.standardError.write(Data("PhotoCull: \(error.localizedDescription)\n".utf8))
+            exit(2)
+        }
         if args.contains("--repair-pairs") {
             exit(HeadlessCheck.repairPairs(apply: args.contains("--apply")))
         }
@@ -16,13 +23,15 @@ enum PhotoCullMain {
 }
 
 struct PhotoCullApp: App {
-    @StateObject private var app = AppState()
+    @StateObject private var app = StartupConfiguration.current.makeAppState()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView()
-                .environmentObject(app)
+                .environmentObject(connectedApp)
+                .environmentObject(app.imageLoader)
+                .environmentObject(app.canvas)
                 .frame(minWidth: 940, minHeight: 620)
         }
         .defaultSize(width: 1400, height: 880)
@@ -63,14 +72,20 @@ struct PhotoCullApp: App {
             }
         }
 
-        MenuBarExtra {
+        // Its ordinary menu contains a direct Finder action; do not insert it in fixture mode.
+        MenuBarExtra(isInserted: .constant(!app.fixtureMode)) {
             MenuBarView()
-                .environmentObject(app)
+                .environmentObject(connectedApp)
         } label: {
             // A single image is reliable in MenuBarExtra's status-item renderer.
             Image(nsImage: Self.menuBarIcon)
         }
         .menuBarExtraStyle(.window)
+    }
+
+    @MainActor private var connectedApp: AppState {
+        delegate.operationState = app
+        return app
     }
 
     private static let menuBarIcon: NSImage = {
@@ -89,13 +104,22 @@ struct PhotoCullApp: App {
     }()
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var operationState: AppState?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        operationState?.prepareForTermination() == false ? .terminateCancel : .terminateNow
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         KeyMonitor.shared.start()
-        Snapshot.applyRequestedAppearance()
-        Snapshot.scheduleIfRequested()
+        if !StartupConfiguration.current.isFixture {
+            Snapshot.applyRequestedAppearance()
+            Snapshot.scheduleIfRequested()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

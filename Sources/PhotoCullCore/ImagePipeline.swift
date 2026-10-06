@@ -20,6 +20,20 @@ public enum ImagePipeline {
         return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
     }
 
+    /// Return only an embedded thumbnail; never synthesize one from full pixels.
+    public static func embeddedThumbnail(url: URL, maxPixel: Int) -> CGImage? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
+        else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: false,
+            kCGImageSourceCreateThumbnailFromImageIfAbsent: false,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
+    }
+
     /// Fast thumbnail (ImageIO thumbnail path, orientation applied).
     public static func thumbnail(url: URL, maxPixel: Int) -> CGImage? {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
@@ -123,6 +137,17 @@ public enum ImagePipeline {
         }
     }
 
+    /// The scale factor that keeps a `width` × `height` canvas covered when
+    /// its content is rotated by `degrees` about the center. Shared by the
+    /// CPU `rotateToFill` and the GPU live-tilt preview, so both paths render
+    /// the exact same normalized geometry.
+    public static func coverScale(width: Double, height: Double, degrees: Double) -> Double {
+        let theta = degrees * .pi / 180
+        let w = width, h = height
+        let c = abs(cos(theta)), s = abs(sin(theta))
+        return max((w * c + h * s) / w, (w * s + h * c) / h)
+    }
+
     /// Rotate `image` by `degrees` (positive = clockwise on screen), scaling
     /// it up just enough that the same-sized canvas stays covered, so there
     /// are no empty corners to crop around. Bounded to a hair under 45° by
@@ -131,8 +156,7 @@ public enum ImagePipeline {
         let theta = CGFloat(degrees) * .pi / 180
         guard abs(theta) > 0.0005 else { return image }
         let w = CGFloat(image.width), h = CGFloat(image.height)
-        let c = abs(cos(theta)), s = abs(sin(theta))
-        let scale = max((w * c + h * s) / w, (w * s + h * c) / h)
+        let scale = CGFloat(coverScale(width: Double(w), height: Double(h), degrees: degrees))
         guard let cs = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB),
               let ctx = CGContext(data: nil, width: image.width, height: image.height,
                                   bitsPerComponent: 8, bytesPerRow: 0, space: cs,
@@ -197,15 +221,25 @@ public enum ImagePipeline {
 }
 
 /// Thread-safe LRU cache for decoded images, keyed by (path, maxPixel).
+/// Bounded by both an entry cap and an approximate byte budget (decoded RGBA
+/// ≈ width·height·4), whichever trips first — a 16-entry cap alone would let
+/// 4096px photos pin ~1 GB.
 public final class ImageCache: @unchecked Sendable {
     private let capacity: Int
+    private let byteBudget: Int
     private var lock = NSLock()
     /// Oldest first.
     private var order: [String] = []
     private var images: [String: CGImage] = [:]
+    private var totalBytes = 0
 
-    public init(capacity: Int) {
+    public init(capacity: Int, byteBudget: Int = .max) {
         self.capacity = max(0, capacity)
+        self.byteBudget = max(0, byteBudget)
+    }
+
+    private func approxBytes(_ image: CGImage) -> Int {
+        image.width * image.height * 4
     }
 
     public func image(for key: String) -> CGImage? {
@@ -222,12 +256,18 @@ public final class ImageCache: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard capacity > 0 else { return }
+        if let old = images[key] { totalBytes -= approxBytes(old) }
         images[key] = image
         order.removeAll { $0 == key }
         order.append(key)
-        while order.count > capacity {
-            let evicted = order.removeFirst()
-            images.removeValue(forKey: evicted)
+        totalBytes += approxBytes(image)
+        // Evict oldest-first while over either limit, but never evict the
+        // entry just stored: callers store then immediately read back, so
+        // dropping it would pin a decode loop.
+        while order.count > capacity || totalBytes > byteBudget {
+            guard order.count > 1, let evictedImage = images.removeValue(forKey: order.removeFirst())
+            else { break }
+            totalBytes -= approxBytes(evictedImage)
         }
     }
 
@@ -236,6 +276,7 @@ public final class ImageCache: @unchecked Sendable {
         defer { lock.unlock() }
         images.removeAll()
         order.removeAll()
+        totalBytes = 0
     }
 
     /// Cache key helper: "<path>|<maxPixel>".

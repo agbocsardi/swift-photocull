@@ -1,18 +1,42 @@
 import SwiftUI
 import PhotoCullCore
 
+struct FilmstripScrollTarget: Equatable {
+    let date: String?
+    let url: URL?
+    let index: Int
+    let openEpoch: Int
+
+    func behavior(from old: Self?) -> FilmstripScrollBehavior {
+        guard let old, let date, old.date == date, old.openEpoch == openEpoch else { return .snap }
+        return .animate
+    }
+}
+
+enum FilmstripScrollBehavior: Equatable {
+    case snap, animate
+}
+
 /// Native horizontal filmstrip of the current session's photos.
 struct FilmstripPane: View {
     @EnvironmentObject var app: AppState
+
+    private var scrollTarget: FilmstripScrollTarget {
+        FilmstripScrollTarget(date: app.activeDate,
+                     url: app.currentPair?.jpg,
+                     index: app.index,
+                     openEpoch: app.sessionOpenEpoch)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             SectionHeader(text: "Filmstrip", number: 4,
                           focused: app.focusedPane == .filmstrip,
-                          trailing: AnyView(
+                          trailing: {
                 Text(app.pairs.isEmpty ? "" : "\(app.index + 1) of \(app.pairs.count)")
                     .font(Typo.number)
-                    .foregroundStyle(Palette.tertiary)))
+                    .foregroundStyle(Palette.tertiary)
+            })
 
             if app.pairs.isEmpty {
                 EmptyState(icon: "film",
@@ -21,47 +45,52 @@ struct FilmstripPane: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        // Non-lazy on purpose. LazyHStack + programmatic
-                        // scrollTo misbehaves on macOS: cells materialize
-                        // blank when navigating back and forth, and scrollTo
-                        // can no-op on ids that aren't materialized yet, so
-                        // far jumps don't center. Thumbnails are capped at
-                        // 256px and sessions hold ~150 photos max (~30MB),
-                        // so mounting every cell is cheap and stays
-                        // subscription-safe: every cell re-renders on cache
-                        // changes instead of only the recycled window.
+                        // Retain HStack and native scrollTo behavior; virtualized
+                        // layout remains a separately validated change.
                         HStack(spacing: Metric.elementGap) {
                             ForEach(Array(app.pairs.enumerated()), id: \.element.jpg) { i, pair in
                                 ThumbCell(pair: pair, index: i,
                                           decision: app.decision(for: pair.stem),
                                           crop: app.crop(for: pair.stem),
                                           isCurrent: i == app.index,
+                                          onSelect: { app.setIndex(i) },
                                           thumbs: app.thumbs)
                             }
                         }
                         .padding(.horizontal, Metric.paneInset)
                         .padding(.bottom, Metric.elementGap)
                     }
-                    .onChange(of: app.index) { _, new in
-                        guard app.pairs.indices.contains(new) else { return }
-                        withAnimation(Motion.fast) { proxy.scrollTo(app.pairs[new].jpg, anchor: .center) }
+                    .onAppear { scroll(to: scrollTarget, using: proxy, animated: false) }
+                    .onChange(of: scrollTarget) { old, new in
+                        scroll(to: new, using: proxy, animated: new.behavior(from: old) == .animate)
                     }
                 }
             }
         }
         .background(Surface.chrome)
     }
+
+    private func scroll(to target: FilmstripScrollTarget, using proxy: ScrollViewProxy, animated: Bool) {
+        guard let url = target.url else { return }
+        if animated {
+            withAnimation(Motion.fast) { proxy.scrollTo(url, anchor: .center) }
+        } else {
+            proxy.scrollTo(url, anchor: .center)
+        }
+    }
 }
 
 /// One thumbnail. Current photo gets an accent ring; state is shown with a
 /// small badge rather than recolouring the whole cell.
 private struct ThumbCell: View {
-    @EnvironmentObject var app: AppState
     let pair: FilePair
     let index: Int
     let decision: Decision
     let crop: CropRect?
     let isCurrent: Bool
+    /// Tap handler passed down by the pane, so cells don't subscribe to the
+    /// app-wide object for a single method call.
+    let onSelect: () -> Void
     @ObservedObject var thumbs: ThumbnailStore
 
     @StateObject private var hover = ViewState(false)
@@ -70,8 +99,8 @@ private struct ThumbCell: View {
 
     /// The cache is already EXIF-orientated. Fit its actual dimensions in the
     /// filmstrip slot, so neither the photo nor its selection ring is cropped.
-    private var imageSize: CGSize {
-        guard let cg = thumbs.cached(for: pair.jpg) else {
+    private func imageSize(for cg: CGImage?) -> CGSize {
+        guard let cg else {
             return CGSize(width: Metric.thumbHeight * 2 / 3, height: Metric.thumbHeight)
         }
         let scale = min(Metric.thumbWidth / CGFloat(cg.width),
@@ -81,10 +110,12 @@ private struct ThumbCell: View {
     }
 
     var body: some View {
+        let cachedImage = thumbs.cached(for: pair.jpg)
+        let fittedSize = imageSize(for: cachedImage)
         VStack(spacing: 3) {
             ZStack {
                 Rectangle().fill(Palette.quaternary.opacity(0.25))
-                if let cg = thumbs.cached(for: pair.jpg) {
+                if let cg = cachedImage {
                     Image(decorative: cg, scale: 1)
                         .resizable()
                         .scaledToFit()
@@ -97,7 +128,7 @@ private struct ThumbCell: View {
                     ProgressView().controlSize(.mini).scaleEffect(0.5)
                 }
             }
-            .frame(width: imageSize.width, height: imageSize.height)
+            .frame(width: fittedSize.width, height: fittedSize.height)
             .clipShape(RoundedRectangle(cornerRadius: Metric.radiusThumb, style: .continuous))
             .overlay(alignment: .topTrailing) {
                 if decision != .undecided {
@@ -134,7 +165,7 @@ private struct ThumbCell: View {
                                             : (hover.value ? Palette.secondary : Palette.separator),
                                   lineWidth: isCurrent ? 2 : 0.5)
             )
-            .shadowSubtle()
+            .shadowSubtle(isCurrent || hover.value)
             .scaleEffect(isCurrent ? 1.0 : (hover.value ? 1.02 : 1.0))
             .animation(Motion.fast, value: hover.value)
             .animation(Motion.fast, value: isCurrent)
@@ -148,13 +179,9 @@ private struct ThumbCell: View {
         }
         .contentShape(Rectangle())
         .onHover { hover.value = $0 }
-        .onTapGesture { app.setIndex(index) }
+        .onTapGesture { onSelect() }
         .help("\(pair.stem).JPG")
-        // Reload when this slot's photo changes. Cell identity is the photo's
-        // full URL (see the ForEach above), so a session switch rebuilds every
-        // cell and this runs fresh; it also covers in-place photo changes.
-        // A cell whose thumbnail was LRU-evicted while off-screen heals here
-        // too, because lazy remounting re-runs this task on re-appear.
+        // Cell identity is the full photo URL, so session changes start a fresh request.
         .task(id: pair.jpg) { _ = thumbs.thumbnail(for: pair.jpg) }
     }
 }

@@ -6,58 +6,71 @@ import PhotoCullCore
 /// the numbered keyboard map stays coherent.
 struct ImagePane: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var loader: ImageLoader
+    @EnvironmentObject var canvas: CanvasState
     /// Keyboard focus on the tilt slider: arrows then nudge tilt.
     @FocusState private var tiltFocused: Bool
+    @StateObject private var renderer = EditRenderer()
 
-    /// What the pane actually draws. This is the exact edit pipeline the
-    /// export runs (quarter turn → tilt → crop), so preview == output.
-    /// Crop mode edits show the working tilt against the full frame.
-    private var displayImage: CGImage? {
-        guard var img = app.imageLoader.current else { return nil }
-        if app.currentQuarterTurns != 0 {
-            img = ImagePipeline.rotateQuarter(img, turns: app.currentQuarterTurns)
+    private var renderRequest: EditRenderRequest? {
+        guard let source = loader.current else { return nil }
+        let cpuTilt = app.cropMode ? 0 : app.currentTilt
+        let crop = !app.cropMode && app.showCroppedPreview ? app.currentCrop : nil
+        let key = EditRenderKey(source: source, url: app.currentPair?.jpg,
+                                quarterTurns: app.currentQuarterTurns, cpuTilt: cpuTilt, crop: crop)
+        return EditRenderRequest(key: key, source: source)
+    }
+
+    private func displayImage(for request: EditRenderRequest?) -> CGImage? {
+        guard let request else { return nil }
+        if request.key.quarterTurns == 0, request.key.cpuTilt == 0, request.key.crop == nil {
+            return request.source
         }
-        let tilt = app.cropMode ? app.cropTilt : app.currentTilt
-        if tilt != 0 {
-            img = ImagePipeline.rotateToFill(img, degrees: tilt)
-        }
-        if app.cropMode { return img }
-        if app.showCroppedPreview, let crop = app.currentCrop, !crop.isFullFrame {
-            return ImagePipeline.crop(img, to: crop) ?? img
-        }
-        return img
+        guard renderer.ready?.key == request.key else { return nil }
+        return renderer.ready?.image
     }
 
     var body: some View {
         VStack(spacing: 0) {
+            // A mismatched old result is hidden synchronously, before the
+            // keyed task submits the latest request.
+            let request = renderRequest
+            let cg = displayImage(for: request)
+
             SectionHeader(text: "Canvas", number: 2,
                           focused: app.focusedPane == .image,
-                          trailing: AnyView(trailing))
+                          trailing: { trailing })
 
             ZStack {
                 // Opaque canvas: content areas should not be translucent.
                 Color(nsColor: .underPageBackgroundColor)
 
-                if let cg = displayImage {
+                if let cg {
                     GeometryReader { geo in
                         let container = geo.size
                         let base = fitSize(CGSize(width: cg.width, height: cg.height), into: container)
-                        let shown = CGSize(width: base.width * app.zoom, height: base.height * app.zoom)
+                        let shown = CGSize(width: base.width * canvas.zoom, height: base.height * canvas.zoom)
                         let origin = CGPoint(
-                            x: (container.width - shown.width) / 2 + app.pan.width,
-                            y: (container.height - shown.height) / 2 + app.pan.height)
+                            x: (container.width - shown.width) / 2 + canvas.pan.width,
+                            y: (container.height - shown.height) / 2 + canvas.pan.height)
 
                         ZStack(alignment: .topLeading) {
-                            Image(decorative: cg, scale: 1)
-                                .resizable()
-                                .interpolation(app.zoom > 1.5 ? .none : .high)
-                                .frame(width: shown.width, height: shown.height)
-                                .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
-                                .offset(x: origin.x, y: origin.y)
+                            if app.cropMode {
+                                liveTiltImage(cg: cg, shown: shown, origin: origin)
+                            } else {
+                                Image(decorative: cg, scale: 1)
+                                    .resizable()
+                                    .interpolation(canvas.zoom > 1.5 ? .none : .high)
+                                    .frame(width: shown.width, height: shown.height)
+                                    // Peak interaction cost: skip the
+                                    // full-canvas Gaussian while cropping.
+                                    .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+                                    .offset(x: origin.x, y: origin.y)
+                            }
 
                             if app.cropMode {
                                 CropOverlay(
-                                    rect: $app.cropRect,
+                                    rect: $canvas.cropRect,
                                     imageRect: CGRect(origin: origin, size: shown),
                                     aspect: app.cropAspect.ratio,
                                     onAspectRequest: { app.applyAspect() },
@@ -82,13 +95,32 @@ struct ImagePane: View {
                             DragGesture(minimumDistance: 2)
                                 .onChanged { value in
                                     guard !app.cropMode else { return }
-                                    app.pan = CGSize(width: value.translation.width,
-                                                     height: value.translation.height)
+                                    canvas.pan = CGSize(width: value.translation.width,
+                                                        height: value.translation.height)
                                 }
                         )
                     }
-                } else if app.imageLoader.isLoading {
-                    ProgressView().controlSize(.small)
+                } else if request != nil {
+                    ProgressView("Rendering edits…").controlSize(.small)
+                } else if loader.isLoading {
+                    // Instant placeholder: the filmstrip's 256 px thumb while
+                    // the full decode runs — perceived miss latency ≈ 0.
+                    // Falls back to the spinner when the LRU evicted it or
+                    // the session's thumbs haven't decoded yet. Read the
+                    // thumb ONLY here, never in the `cg != nil` path above:
+                    // `cached(for:)` locks the 512-slot LRU on every body.
+                    if let pair = app.currentPair, let ph = app.thumbs.cached(for: pair.jpg) {
+                        Image(decorative: ph, scale: 1)
+                            .resizable()
+                            .scaledToFit()
+                            .rotationEffect(.degrees(Double(app.currentQuarterTurns) * 90))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(Metric.canvasPad)
+                            .opacity(0.9)
+                            .transition(.opacity)
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
                 } else if app.activeDate == nil {
                     EmptyState(icon: "photo.on.rectangle.angled",
                                title: "No session selected",
@@ -102,7 +134,7 @@ struct ImagePane: View {
                 }
 
                 // Floating action bar, previews only.
-                if displayImage != nil, !app.cropMode {
+                if cg != nil, !app.cropMode {
                     VStack {
                         Spacer()
                         FloatingActionBar()
@@ -115,9 +147,23 @@ struct ImagePane: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Crossfade the real decode in over the thumb placeholder.
+            .animation(Motion.fast, value: loader.isLoading)
         }
         .background(Surface.chrome)
+        .task(id: renderRequest?.key) {
+            guard let request = renderRequest else {
+                renderer.reset()
+                return
+            }
+            guard request.key.quarterTurns != 0 || request.key.cpuTilt != 0 || request.key.crop != nil else {
+                renderer.reset()
+                return
+            }
+            renderer.submit(request)
+        }
         .animation(Motion.normal, value: app.cropMode)
+        .onDisappear { renderer.reset() }
         .onChange(of: tiltFocused) { _, focused in app.tiltFocused = focused }
         .onChange(of: app.cropMode) { _, on in
             if !on {
@@ -125,6 +171,25 @@ struct ImagePane: View {
                 app.tiltFocused = false
             }
         }
+    }
+
+    /// GPU live tilt for crop mode: draws the memoized (quarter-turned)
+    /// base image, then scales by the shared cover factor and rotates —
+    /// Core Animation work, no CPU resample per 0.25° tick. The uniform
+    /// fit-scale into `shown` commutes with the rotate+cover transform, so
+    /// this fills the same `shown` rect the CPU `rotateToFill` output
+    /// would, and `CropOverlay`'s `imageRect` mapping stays correct.
+    private func liveTiltImage(cg: CGImage, shown: CGSize, origin: CGPoint) -> some View {
+        Image(decorative: cg, scale: 1)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: shown.width, height: shown.height)
+            .scaleEffect(CGFloat(ImagePipeline.coverScale(
+                width: Double(shown.width), height: Double(shown.height),
+                degrees: canvas.cropTilt)))
+            .rotationEffect(.degrees(canvas.cropTilt))
+            .clipped()
+            .offset(x: origin.x, y: origin.y)
     }
 
     /// Floating tilt control under the canvas while crop mode is open.
@@ -137,12 +202,12 @@ struct ImagePane: View {
                 .foregroundStyle(Palette.crop)
                 .onTapGesture { tiltFocused = true }
             Slider(value: Binding(
-                get: { app.cropTilt },
-                set: { app.cropTilt = ($0 * 4).rounded() / 4 }),
+                get: { canvas.cropTilt },
+                set: { canvas.cropTilt = ($0 * 4).rounded() / 4 }),
                 in: -45...45, step: 0.25)
                 .frame(width: 320)
                 .focused($tiltFocused)
-            Text(String(format: "%+.2f°", app.cropTilt))
+            Text(String(format: "%+.2f°", canvas.cropTilt))
                 .font(Typo.number)
                 .monospacedDigit()
                 .frame(width: 60, alignment: .trailing)
@@ -168,17 +233,17 @@ struct ImagePane: View {
                 Text(app.cropAspect.rawValue)
                     .font(Typo.number)
                     .foregroundStyle(Palette.secondary)
-                Text(String(format: "%.0f%% × %.0f%%", app.cropRect.w * 100, app.cropRect.h * 100))
+                Text(String(format: "%.0f%% × %.0f%%", canvas.cropRect.w * 100, canvas.cropRect.h * 100))
                     .font(Typo.number)
                     .foregroundStyle(Palette.secondary)
-                Text(String(format: "%+.1f°", app.cropTilt))
+                Text(String(format: "%+.1f°", canvas.cropTilt))
                     .font(Typo.number)
-                    .foregroundStyle(app.cropTilt != 0 ? Palette.crop : Palette.secondary)
+                    .foregroundStyle(canvas.cropTilt != 0 ? Palette.crop : Palette.secondary)
             } else if app.currentPair != nil {
                 if app.hasCrop { DecisionBadge(text: "CROPPED", color: Palette.crop) }
                 if app.hasTilt { DecisionBadge(text: "TILTED", color: Palette.crop) }
                 if app.isQuarterRotated { DecisionBadge(text: "ROTATED", color: Palette.crop) }
-                Text(String(format: "%.0f%%", app.zoom * 100))
+                Text(String(format: "%.0f%%", canvas.zoom * 100))
                     .font(Typo.number)
                     .foregroundStyle(Palette.secondary)
             }
@@ -199,6 +264,7 @@ struct ImagePane: View {
 /// Pill-shaped action bar over the photo: icons with tooltips, vibrancy + shadow.
 struct FloatingActionBar: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var canvas: CanvasState
 
     var body: some View {
         HStack(spacing: 2) {
@@ -248,17 +314,17 @@ struct FloatingActionBar: View {
             Divider().frame(height: 16).overlay(Palette.separator)
 
             action("minus.magnifyingglass", tint: Palette.secondary, tip: "Zoom out (-)", filled: false) {
-                app.zoomOut()
+                canvas.zoomOut()
             }
-            Text(String(format: "%.0f%%", app.zoom * 100))
+            Text(String(format: "%.0f%%", canvas.zoom * 100))
                 .font(Typo.number)
                 .foregroundStyle(Palette.secondary)
                 .frame(width: 40)
             action("plus.magnifyingglass", tint: Palette.secondary, tip: "Zoom in (+)", filled: false) {
-                app.zoomIn()
+                canvas.zoomIn()
             }
             action("arrow.up.left.and.arrow.down.right", tint: Palette.secondary,
-                   tip: "Fit to window (0)", filled: false) { app.resetZoom() }
+                   tip: "Fit to window (0)", filled: false) { canvas.resetZoom() }
 
             Divider().frame(height: 16).overlay(Palette.separator)
 

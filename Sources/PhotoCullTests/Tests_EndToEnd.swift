@@ -44,10 +44,11 @@ func suiteEndToEnd() throws {
         paths: PathsConfig(inbox: inbox.path, archive: archive.path, dump: dump.path),
         files: FilesConfig(rawExtensions: ["RAF", "RW2"], jpgExtensions: ["JPG", "JPEG"]))
 
-    final class Box: @unchecked Sendable { var value = IngestProgress() }
-    let box = Box()
-    let result = try Ingest.run(cfg: cfg, source: dcim) { box.value = $0 }
-    let lastProgress = box.value
+    let box = LockedBox(IngestProgress())
+    let result = try Ingest.run(cfg: cfg, source: dcim) { progress in
+        box.update { $0 = progress }
+    }
+    let lastProgress = box.snapshot()
     checkEqual(result.copied, 3, "ingest copied all three files")
     checkEqual(result.folders, [captureDate], "ingest produced one date folder")
     check(lastProgress.done, "final progress callback reports done")

@@ -2,6 +2,26 @@ import Foundation
 
 /// Tiny test harness (XCTest is unavailable in a CommandLineTools-only toolchain).
 
+public final class LockedBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+
+    public init(_ value: Value) { self.value = value }
+
+    @discardableResult
+    public func update<Result>(_ body: (inout Value) -> Result) -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        return body(&value)
+    }
+
+    public func snapshot() -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
 nonisolated(unsafe) var pcFailures: [String] = []
 nonisolated(unsafe) var pcChecks = 0
 
@@ -31,9 +51,10 @@ public func suite(_ name: String, _ body: () throws -> Void) {
     do { try body() } catch { pcFailures.append("\(name) threw: \(error)"); print("  THREW \(error)") }
 }
 
-/// Temp directory that is removed when the process exits.
+/// Create a unique temp directory; callers own its cleanup.
 public func makeTempDir(_ tag: String) throws -> URL {
-    let url = URL(fileURLWithPath: NSTemporaryDirectory())
+    let base = ProcessInfo.processInfo.environment["PC_TEST_ROOT"] ?? NSTemporaryDirectory()
+    let url = URL(fileURLWithPath: base, isDirectory: true)
         .appendingPathComponent("pc-\(tag)-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
